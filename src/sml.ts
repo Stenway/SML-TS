@@ -366,6 +366,42 @@ export class SmlElement extends SmlNamedNode {
 		for (let node of this.nodes) { node.minify() }
 	}
 
+	alignAttributes(whitespaceBetween: string = " ") {
+		let attributes: SmlAttribute[] = this.attributes()
+		let whitespacesArray: (string | null)[][] = []
+		let valuesArray: (string | null)[][] = []
+		let numColumns: number = 0
+		WsvStringUtil.validateWhitespaceString(whitespaceBetween, false)
+		for (let attribute of attributes) {
+			whitespacesArray.push([null])
+			let values: (string | null)[] = [attribute.name, ...attribute.values]
+			numColumns = Math.max(numColumns, values.length)
+			valuesArray.push(values)
+		}
+		for (let c=0; c<numColumns; c++) {
+			let maxLength: number = 0
+			for (let i=0; i<attributes.length; i++) {
+				let values: (string | null)[] = valuesArray[i]
+				if (c >= values.length) { continue }
+				let value: string | null = values[c]
+				let serializedValue: string = WsvSerializer.serializeValue(value)
+				maxLength = Math.max(maxLength, serializedValue.length)
+			}
+			for (let i=0; i<attributes.length; i++) {
+				let values: (string | null)[] = valuesArray[i]
+				if (c >= values.length-1) { continue }
+				let value: string | null = valuesArray[i][c]
+				let serializedValue: string = WsvSerializer.serializeValue(value)
+				let lengthDif: number = maxLength - serializedValue.length
+				let whitespace: string = " ".repeat(lengthDif)+whitespaceBetween
+				whitespacesArray[i].push(whitespace)
+			}
+		}
+		for (let i=0; i<attributes.length; i++) {
+			attributes[i].whitespaces = whitespacesArray[i]
+		}
+	}
+
 	static internalSetEndWhitespacesAndComment(element: SmlElement, endWhitespaces: (string | null)[] | null, endComment: string | null) {
 		element._endWhitespaces = endWhitespaces
 		element._endComment = endComment
@@ -478,14 +514,17 @@ export abstract class SmlSerializer {
 	}
 
 	static getWhitespaces(whitespaces: (string | null)[] | null, level: number, defaultIndentation: string | null): (string | null)[] | null {
-		if (whitespaces !== null && whitespaces.length > 0) { return whitespaces }
-		if (defaultIndentation === null) {
-			let indentStr: string = "\t".repeat(level)
-			return [indentStr]
-		} else {
-			let indentStr: string = defaultIndentation.repeat(level)
-			return [indentStr]
+		if (whitespaces !== null && whitespaces.length > 0) {
+			if (whitespaces[0] === null) {
+				if (defaultIndentation === null) { defaultIndentation = "\t" }
+				let indentStr: string = defaultIndentation.repeat(level)
+				return [indentStr, ...whitespaces.slice(1)]
+			}
+			return whitespaces 
 		}
+		if (defaultIndentation === null) { defaultIndentation = "\t" }
+		let indentStr: string = defaultIndentation.repeat(level)
+		return [indentStr]
 	}
 
 	static serializeValuesWhitespacesAndComment(values: (string | null)[], whitespaces: (string | null)[] | null, comment: string | null, lines: string[], level: number, defaultIndentation: string | null) {
