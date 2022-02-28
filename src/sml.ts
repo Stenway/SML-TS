@@ -113,6 +113,10 @@ export class SmlAttribute extends SmlNamedNode {
 		this._values = [...array]
 	}
 
+	get valueCount(): number {
+		return this._values.length
+	}
+
 	constructor(name: string, values: (string | null)[]) {
 		super(name)
 		if (values.length === 0) { throw new TypeError(`Attribute "${name}" must contain at least one value`) }
@@ -127,6 +131,99 @@ export class SmlAttribute extends SmlNamedNode {
 		let combined: (string | null)[] = [this.name, ...this.values]
 		if (preserveWhitespaceAndComment) { SmlSerializer.serializeValuesWhitespacesAndComment(combined, this._whitespaces, this._comment, lines, level, defaultIndentation) }
 		else { SmlSerializer.serializeValuesWhitespacesAndComment(combined, null, null, lines, level, defaultIndentation) }
+	}
+
+	assureName(name: string): SmlAttribute {
+		if (!this.hasName(name)) { throw new Error(`Attribute with name "${name}" expected but has name "${this.name}"`) }
+		return this
+	}
+
+	assureValueCount(count: number): SmlAttribute {
+		if (this._values.length !== count) { throw new Error(`Attribute "${this.name}" must have a value count of ${count} but has ${this._values.length}`) }
+		return this
+	}
+
+	assureValueCountMinMax(min: number | null, max: number | null): SmlAttribute {
+		if (min !== null && this._values.length < min) { throw new Error(`Attribute "${this.name}" must have a minimum value count of ${min} but has ${this._values.length}`) }
+		if (max !== null && this._values.length > max) { throw new Error(`Attribute "${this.name}" must have a maximum value count of ${min} but has ${this._values.length}`) }
+		return this
+	}
+
+	getNullableString(index: number = 0): string | null {
+		if (index >= this._values.length) { throw new Error(`Index of ${index} for attribute "${this.name}" exceeds maximum index of ${this._values.length-1}`) }
+		let value: string | null = this._values[index]
+		return value
+	}
+
+	getString(index: number = 0): string {
+		let value: string | null = this.getNullableString(index)
+		if (value === null) { throw new Error(`Value of attribute "${this.name}" at index ${index} is null`) }
+		return value
+	}
+
+	getNullableStringArray(startIndex: number = 0): (string | null)[] {
+		if (startIndex > this._values.length) { throw new Error(`Index of ${startIndex} for attribute "${this.name}" exceeds maximum index of ${this._values.length-1}`) }
+		return this._values.slice(startIndex)
+	}
+
+	getStringArray(startIndex: number = 0): string[] {
+		let array: (string | null)[] = this.getNullableStringArray(startIndex)
+		if (array.indexOf(null) >= 0) { throw new Error(`Attribute "${this.name}" has a null value`) }
+		return array as string[]
+	}
+
+	getBool(index: number = 0): boolean {
+		let value: string | null = this.getNullableString(index)
+		if (value === null) { throw new Error(`Value of attribute "${this.name}" at index ${index} is null`) }
+		value = value.toLowerCase()
+		if (value === "true") { return true }
+		else if (value === "false") { return false }
+		throw new Error(`Value of attribute "${this.name}" at index ${index} is not a bool`)
+	}
+
+	getEnum(enumValues: string[], index: number = 0): number {
+		let value: string = this.getString(index)
+		for (let i=0; i<enumValues.length; i++) {
+			let enumValue: string = enumValues[i]
+			if (SmlStringUtil.equalsIgnoreCase(value, enumValue)) { return i }
+		}
+		throw new Error(`Value "${value}" of attribute "${this.name}" at index ${index} is not a valid enum value`)
+	}
+
+	asNullableString(): string | null { 
+		return this.assureValueCount(1).getNullableString() 
+	}
+
+	asString(): string { 
+		return this.assureValueCount(1).getString() 
+	}
+	
+	asNullableStringArray(min: number | null = null, max: number | null = null): (string | null)[] {
+		this.assureValueCountMinMax(min, max)
+		return this.values
+	}
+
+	asStringArray(min: number | null = null, max: number | null = null): string[] {
+		this.assureValueCountMinMax(min, max)
+		return this.getStringArray()
+	}
+	
+	asBool(): boolean { 
+		return this.assureValueCount(1).getBool()
+	}
+
+	asDateTime(): Date { 
+		this.assureValueCountMinMax(2, 3)
+		let dateStr: string = this.getString(0)
+		let timeStr: string = this.getString(1)
+		let zoneStr: string = ""
+		if (this._values.length > 2) { zoneStr = this.getString(2) }
+		let dateTimeStr: string = `${dateStr}T${timeStr}${zoneStr}`
+		return new Date(dateTimeStr)
+	}
+
+	asEnum(enumValues: string[]): number { 
+		return this.assureValueCount(1).getEnum(enumValues) 
 	}
 }
 
@@ -399,6 +496,102 @@ export class SmlElement extends SmlNamedNode {
 		}
 		for (let i=0; i<attributes.length; i++) {
 			attributes[i].whitespaces = whitespacesArray[i]
+		}
+	}
+
+	assureName(name: string): SmlElement {
+		if (!this.hasName(name)) { throw new Error(`Element with name "${name}" expected but found "${this.name}"`) }
+		return this
+	}
+
+	assureElementNames(names: string[]) {
+		elementLoop: for (let element of this.elements()) {
+			for (let name of names) {
+				if (element.hasName(name)) { continue elementLoop }
+			}
+			throw new Error(`Not allowed element with name "${element.name}" found in element "${this.name}"`)
+		}
+	}
+
+	assureAttributeNames(names: string[]) {
+		attributeLoop: for (let attribute of this.attributes()) {
+			for (let name of names) {
+				if (attribute.hasName(name)) { continue attributeLoop }
+			}
+			throw new Error(`Not allowed attribute with name "${attribute.name}" found in element "${this.name}"`)
+		}
+	}
+
+	assureNoElements() {
+		if (this.elements().length > 0) { throw new Error(`Element with name "${this.name}" cannot have elements`) }
+	}
+
+	assureNoAttributes() {
+		if (this.attributes().length > 0) { throw new Error(`Element with name "${this.name}" cannot have attributes`) }
+	}
+
+	optionalAttribute(attributeName: string): SmlAttribute | null {
+		let attributes: SmlAttribute[] = this.attributes(attributeName)
+		if (attributes.length > 1) { throw new Error(`Element "${this.name}" must contain one or no attribute "${attributeName}" but contains ${attributes.length}`) }
+		if (attributes.length === 0) { return null }
+		else { return attributes[0] }
+	}
+
+	requiredAttribute(attributeName: string): SmlAttribute {
+		let attributes: SmlAttribute[] = this.attributes(attributeName)
+		if (attributes.length !== 1) { throw new Error(`Element "${this.name}" must contain one attribute "${attributeName}" but contains ${attributes.length}`) }
+		return attributes[0]
+	}
+
+	oneOrMoreAttributes(attributeName: string): SmlAttribute[] {
+		let attributes: SmlAttribute[] = this.attributes(attributeName)
+		if (attributes.length < 1) { throw new Error(`Element "${this.name}" must contain at least one attribute "${attributeName}" but contains 0`) }
+		return attributes
+	}
+
+	optionalElement(elementName: string): SmlElement | null {
+		let elements: SmlElement[] = this.elements(elementName)
+		if (elements.length > 1) { throw new Error(`Element "${this.name}" must contain one or no element "${elementName}" but contains ${elements.length}`) }
+		if (elements.length === 0) { return null }
+		else { return elements[0] }
+	}
+
+	requiredElement(elementName: string): SmlElement {
+		let elements: SmlElement[] = this.elements(elementName)
+		if (elements.length !== 1) { throw new Error(`Element "${this.name}" must contain one element "${elementName}" but contains ${elements.length}`) }
+		return elements[0]
+	}
+
+	oneOrMoreElements(elementName: string): SmlElement[] {
+		let elements: SmlElement[] = this.elements(elementName)
+		if (elements.length < 1) { throw new Error(`Element "${this.name}" must contain at least one element "${elementName}" but contains 0`) }
+		return elements
+	}
+
+	assureChoice(elementNames: string[] | null, attributeNames: string[] | null, optional: boolean = false) {
+		let foundNodeName: string | null = null
+		let wasAttribute: boolean = false
+		if (elementNames !== null) {
+			for (let elementName of elementNames) {
+				if (this.hasElement(elementName)) {
+					if (foundNodeName !== null) { throw new Error(`Element "${this.name}" cannot contain an element "${foundNodeName}" and an element "${elementName}"`) }
+					foundNodeName = elementName
+				}
+			}
+		}
+		if (attributeNames !== null) {
+			for (let attributeName of attributeNames) {
+				if (this.hasAttribute(attributeName)) {
+					if (foundNodeName !== null) { throw new Error(`Element "${this.name}" cannot contain an ${wasAttribute ? "attribute" : "element"} "${foundNodeName}" and an attribute "${attributeName}"`) }
+					foundNodeName = attributeName
+					wasAttribute = true
+				}
+			}
+		}
+		if (foundNodeName === null && !optional) {
+			let elementStr: string | null = null
+			let attributeStr: string | null = null
+			throw new Error(`Element "${this.name}" must contain ${elementStr}${(elementStr !== null && attributeStr !== null) ? " or " : ""}${attributeStr}`)
 		}
 	}
 
