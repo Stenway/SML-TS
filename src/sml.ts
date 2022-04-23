@@ -181,6 +181,24 @@ export class SmlAttribute extends SmlNamedNode {
 		throw new Error(`Value of attribute "${this.name}" at index ${index} is not a bool`)
 	}
 
+	getInt(index: number = 0): number {
+		let value: string | null = this.getNullableString(index)
+		if (value === null) { throw new Error(`Value of attribute "${this.name}" at index ${index} is null`) }
+		if (value.match(/^[-+]?[0-9]+$/)) {
+			return parseInt(value)
+		}
+		throw new Error(`Value of attribute "${this.name}" at index ${index} is not an integer`)
+	}
+
+	getFloat(index: number = 0): number {
+		let value: string | null = this.getNullableString(index)
+		if (value === null) { throw new Error(`Value of attribute "${this.name}" at index ${index} is null`) }
+		if (value.match(/^[-+]?[0-9]+(\.[0-9]+([eE][-+]?[0-9]+)?)?$/)) {
+			return parseFloat(value)
+		}
+		throw new Error(`Value of attribute "${this.name}" at index ${index} is not a float`)
+	}
+
 	getEnum(enumValues: string[], index: number = 0): number {
 		let value: string = this.getString(index)
 		for (let i=0; i<enumValues.length; i++) {
@@ -210,6 +228,10 @@ export class SmlAttribute extends SmlNamedNode {
 	
 	asBool(): boolean { 
 		return this.assureValueCount(1).getBool()
+	}
+
+	asFloat(): number { 
+		return this.assureValueCount(1).getFloat()
 	}
 
 	asDateTime(): Date { 
@@ -463,7 +485,7 @@ export class SmlElement extends SmlNamedNode {
 		for (let node of this.nodes) { node.minify() }
 	}
 
-	alignAttributes(whitespaceBetween: string = " ") {
+	alignAttributes(whitespaceBetween: string = " ", maxColumns: number | null = null) {
 		let attributes: SmlAttribute[] = this.attributes()
 		let whitespacesArray: (string | null)[][] = []
 		let valuesArray: (string | null)[][] = []
@@ -474,6 +496,9 @@ export class SmlElement extends SmlNamedNode {
 			let values: (string | null)[] = [attribute.name, ...attribute.values]
 			numColumns = Math.max(numColumns, values.length)
 			valuesArray.push(values)
+		}
+		if (maxColumns !== null) {
+			numColumns = maxColumns
 		}
 		for (let c=0; c<numColumns; c++) {
 			let maxLength: number = 0
@@ -524,6 +549,10 @@ export class SmlElement extends SmlNamedNode {
 
 	assureNoElements() {
 		if (this.elements().length > 0) { throw new Error(`Element with name "${this.name}" cannot have elements`) }
+	}
+
+	assureElementCount(count: number) {
+		if (this.elements().length !== count) { throw new Error(`Element with name "${this.name}" must have ${count} element(s)`) }
 	}
 
 	assureNoAttributes() {
