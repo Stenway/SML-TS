@@ -1,8 +1,7 @@
 ﻿/* (C) Stefan John / Stenway / SimpleML.com / 2022 */
 
-import { ReliableTxtDocument, ReliableTxtEncoding, ReliableTxtLines } from "./reliabletxt.js"
-import { SyncWsvStreamReader } from "./wsv-io.js"
-import { WsvStringUtil, WsvDocument, WsvLine, WsvSerializer } from "./wsv.js"
+import { ReliableTxtDocument, ReliableTxtEncoding, ReliableTxtLines } from "@stenway/reliabletxt"
+import { WsvStringUtil, WsvDocument, WsvLine, WsvSerializer } from "@stenway/wsv"
 
 // ----------------------------------------------------------------------
 
@@ -189,7 +188,7 @@ export class SmlAttribute extends SmlNamedNode {
 		}
 		throw new Error(`Value of attribute "${this.name}" at index ${index} is not an integer`)
 	}
-
+	
 	getFloat(index: number = 0): number {
 		let value: string | null = this.getNullableString(index)
 		if (value === null) { throw new Error(`Value of attribute "${this.name}" at index ${index} is null`) }
@@ -225,6 +224,24 @@ export class SmlAttribute extends SmlNamedNode {
 		this.assureValueCountMinMax(min, max)
 		return this.getStringArray()
 	}
+
+	asIntArray(min: number | null = null, max: number | null = null): number[] {
+		this.assureValueCountMinMax(min, max)
+		let values: number[] = []
+		for (let i=0; i<this._values.length; i++) {
+			values.push(this.getInt(i))
+		}
+		return values
+	}
+
+	asFloatArray(min: number | null = null, max: number | null = null): number[] {
+		this.assureValueCountMinMax(min, max)
+		let values: number[] = []
+		for (let i=0; i<this._values.length; i++) {
+			values.push(this.getFloat(i))
+		}
+		return values
+	}
 	
 	asBool(): boolean { 
 		return this.assureValueCount(1).getBool()
@@ -232,6 +249,10 @@ export class SmlAttribute extends SmlNamedNode {
 
 	asFloat(): number { 
 		return this.assureValueCount(1).getFloat()
+	}
+
+	asInt(): number { 
+		return this.assureValueCount(1).getInt()
 	}
 
 	asDateTime(): Date { 
@@ -485,7 +506,7 @@ export class SmlElement extends SmlNamedNode {
 		for (let node of this.nodes) { node.minify() }
 	}
 
-	alignAttributes(whitespaceBetween: string = " ", maxColumns: number | null = null) {
+	alignAttributes(whitespaceBetween: string = " ", maxColumns: number | null = null, rightAligned: boolean[] | null = null) {
 		let attributes: SmlAttribute[] = this.attributes()
 		let whitespacesArray: (string | null)[][] = []
 		let valuesArray: (string | null)[][] = []
@@ -511,12 +532,20 @@ export class SmlElement extends SmlNamedNode {
 			}
 			for (let i=0; i<attributes.length; i++) {
 				let values: (string | null)[] = valuesArray[i]
-				if (c >= values.length-1) { continue }
+				if (c >= values.length) { continue }
 				let value: string | null = valuesArray[i][c]
 				let serializedValue: string = WsvSerializer.serializeValue(value)
 				let lengthDif: number = maxLength - serializedValue.length
 				let whitespace: string = " ".repeat(lengthDif)+whitespaceBetween
-				whitespacesArray[i].push(whitespace)
+				if (rightAligned !== null && rightAligned[c]) {
+					let last: string | null = whitespacesArray[i][whitespacesArray[i].length-1] ?? ""
+					whitespacesArray[i][whitespacesArray[i].length-1] = last + whitespace
+					if (c >= values.length-1) { continue }
+					whitespacesArray[i].push(whitespaceBetween)
+				} else {
+					if (c >= values.length-1) { continue }
+					whitespacesArray[i].push(whitespace)
+				}
 			}
 		}
 		for (let i=0; i<attributes.length; i++) {
@@ -866,56 +895,6 @@ export class WsvJaggedArrayLineIterator implements WsvLineIterator {
 			if (line !== null) {
 				result += WsvSerializer.serializeValues(line)
 			}
-		}
-		return result
-	}
-
-	getLineIndex(): number {
-		return this.index
-	}
-}
-
-// ----------------------------------------------------------------------
-
-export class SyncWsvStreamLineIterator implements WsvLineIterator {
-	private reader: SyncWsvStreamReader
-	private currentLine: WsvLine | null
-	private endKeyword: string | null
-	private index: number = 0
-
-	constructor(reader: SyncWsvStreamReader, endKeyword: string | null) {
-		this.reader = reader
-		this.endKeyword = endKeyword
-		this.currentLine = reader.readLine()
-	}
-
-	getEndKeyword(): string | null {
-		return this.endKeyword
-	}
-
-	hasLine(): boolean {
-		return this.currentLine !== null
-	}
-
-	isEmptyLine(): boolean {
-		return this.hasLine() && !this.currentLine!.hasValues
-	}
-
-	getLine(): WsvLine {
-		let result: WsvLine = this.currentLine!
-		this.currentLine = this.reader.readLine()
-		this.index++
-		return result
-	}
-
-	getLineAsArray(): (string | null)[] {
-		return this.getLine().values
-	}
-
-	toString(): string {
-		let result: string = "(" + this.index + "): "
-		if (this.hasLine()) {
-			result += this.currentLine!.toString()
 		}
 		return result
 	}

@@ -1,0 +1,34 @@
+{
+  "name": "@stenway/sml",
+  "version": "0.0.2",
+  "description": "Stefan John / Stenway / SimpleML.com / 2022",
+  "homepage": "https://www.simpleml.com",
+  "repository": "github:Stenway/SML-TS",
+  "bugs": {
+    "url": "https://github.com/Stenway/SML-TS/issues"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "/dist"
+  ],
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": [
+    "simple markup language",
+    "markup language",
+    "xml",
+    "json",
+    "yaml"
+  ],
+  "author": "Stefan John",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^4.8.4"
+  },
+  "dependencies": {
+    "@stenway/reliabletxt": "^0.0.2",
+    "@stenway/wsv": "^0.0.2"
+  }
+}
