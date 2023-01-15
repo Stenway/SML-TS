@@ -1,7 +1,7 @@
 "use strict";
-/* (C) Stefan John / Stenway / SimpleML.com / 2022 */
+/* (C) Stefan John / Stenway / SimpleML.com / 2023 */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SmlParser = exports.WsvJaggedArrayLineIterator = exports.WsvDocumentLineIterator = exports.SmlParserError = exports.SmlSerializer = exports.SmlStringUtil = exports.SmlDocument = exports.SmlElement = exports.SmlAttribute = exports.SmlNamedNode = exports.SmlEmptyNode = exports.SmlNode = void 0;
+exports.SmlParser = exports.WsvJaggedArrayLineIterator = exports.WsvDocumentLineIterator = exports.SmlParserError = exports.SmlSerializer = exports.SmlStringUtil = exports.SmlDocument = exports.SmlElement = exports.SmlAttribute = exports.SmlValueUtil = exports.SmlNamedNode = exports.SmlEmptyNode = exports.SmlNode = void 0;
 const reliabletxt_1 = require("@stenway/reliabletxt");
 const wsv_1 = require("@stenway/wsv");
 // ----------------------------------------------------------------------
@@ -25,6 +25,9 @@ class SmlNode {
             this._whitespaces = null;
         }
     }
+    get hasWhitespaces() {
+        return this._whitespaces !== null;
+    }
     get comment() {
         return this._comment;
     }
@@ -40,6 +43,22 @@ class SmlNode {
     }
     isAttribute() {
         return this instanceof SmlAttribute;
+    }
+    isEmptyNode() {
+        return this instanceof SmlEmptyNode;
+    }
+    isNamedNode() {
+        return this instanceof SmlNamedNode;
+    }
+    isElementWithName(name) {
+        if (!(this instanceof SmlElement))
+            return false;
+        return this.hasName(name);
+    }
+    isAttributeWithName(name) {
+        if (!(this instanceof SmlAttribute))
+            return false;
+        return this.hasName(name);
     }
     minify() {
         this._whitespaces = null;
@@ -61,11 +80,11 @@ class SmlEmptyNode extends SmlNode {
     toString() {
         return SmlSerializer.serializeEmptyNode(this);
     }
-    serialize(lines, level, defaultIndentation, endKeyword, preserveWhitespaceAndComment) {
+    internalSerialize(lines, level, defaultIndentation, endKeyword, preserveWhitespaceAndComment) {
         if (!preserveWhitespaceAndComment) {
             return;
         }
-        SmlSerializer.serializeValuesWhitespacesAndComment([], this._whitespaces, this._comment, lines, level, defaultIndentation);
+        SmlSerializer.internalSerializeValuesWhitespacesAndComment([], this._whitespaces, this._comment, lines, level, defaultIndentation);
     }
 }
 exports.SmlEmptyNode = SmlEmptyNode;
@@ -78,21 +97,84 @@ class SmlNamedNode extends SmlNode {
     hasName(name) {
         return SmlStringUtil.equalsIgnoreCase(this.name, name);
     }
-    isElementWithName(name) {
-        if (!(this instanceof SmlElement))
-            return false;
-        return this.hasName(name);
-    }
-    isAttributeWithName(name) {
-        if (!(this instanceof SmlAttribute))
-            return false;
-        return this.hasName(name);
-    }
 }
 exports.SmlNamedNode = SmlNamedNode;
 // ----------------------------------------------------------------------
+class SmlValueUtil {
+    static getBoolString(value) {
+        return value === true ? "true" : "false";
+    }
+    static getIntString(value) {
+        if (!Number.isInteger(value)) {
+            throw new RangeError(`Value "${value}" is not a valid integer`);
+        }
+        return value.toString();
+    }
+    static getFloatString(value) {
+        if (!Number.isFinite(value)) {
+            throw new RangeError(`Value "${value}" is not a valid float`);
+        }
+        return value.toString();
+    }
+    static getEnumString(value, enumValues) {
+        if (!Number.isInteger(value) || !(value >= 0 && value < enumValues.length)) {
+            throw new RangeError(`Enum value "${value}" is out of range`);
+        }
+        return enumValues[value];
+    }
+    static getBytesString(bytes) {
+        return reliabletxt_1.Base64String.fromBytes(bytes);
+    }
+    static getBoolOrNull(str) {
+        str = str.toLowerCase();
+        if (str === "true") {
+            return true;
+        }
+        else if (str === "false") {
+            return false;
+        }
+        else {
+            return null;
+        }
+    }
+    static getIntOrNull(str) {
+        if (str.match(/^[-+]?[0-9]+$/)) {
+            return parseInt(str);
+        }
+        else {
+            return null;
+        }
+    }
+    static getFloatOrNull(str) {
+        if (str.match(/^[-+]?[0-9]+(\.[0-9]+([eE][-+]?[0-9]+)?)?$/)) {
+            return parseFloat(str);
+        }
+        else {
+            return null;
+        }
+    }
+    static getEnumOrNull(str, enumValues) {
+        for (let i = 0; i < enumValues.length; i++) {
+            const enumValue = enumValues[i];
+            if (SmlStringUtil.equalsIgnoreCase(str, enumValue)) {
+                return i;
+            }
+        }
+        return null;
+    }
+    static getBytesOrNull(str) {
+        try {
+            return reliabletxt_1.Base64String.toBytes(str);
+        }
+        catch (error) {
+            return null;
+        }
+    }
+}
+exports.SmlValueUtil = SmlValueUtil;
+// ----------------------------------------------------------------------
 class SmlAttribute extends SmlNamedNode {
-    constructor(name, values) {
+    constructor(name, values = [null]) {
         super(name);
         if (values.length === 0) {
             throw new TypeError(`Attribute "${name}" must contain at least one value`);
@@ -114,13 +196,13 @@ class SmlAttribute extends SmlNamedNode {
     toString(preserveWhitespaceAndComment = true) {
         return SmlSerializer.serializeAttribute(this, preserveWhitespaceAndComment);
     }
-    serialize(lines, level, defaultIndentation, endKeyword, preserveWhitespaceAndComment) {
-        let combined = [this.name, ...this.values];
+    internalSerialize(lines, level, defaultIndentation, endKeyword, preserveWhitespaceAndComment) {
+        const combined = [this.name, ...this.values];
         if (preserveWhitespaceAndComment) {
-            SmlSerializer.serializeValuesWhitespacesAndComment(combined, this._whitespaces, this._comment, lines, level, defaultIndentation);
+            SmlSerializer.internalSerializeValuesWhitespacesAndComment(combined, this._whitespaces, this._comment, lines, level, defaultIndentation);
         }
         else {
-            SmlSerializer.serializeValuesWhitespacesAndComment(combined, null, null, lines, level, defaultIndentation);
+            SmlSerializer.internalSerializeValuesWhitespacesAndComment(combined, null, null, lines, level, defaultIndentation);
         }
     }
     assureName(name) {
@@ -135,85 +217,91 @@ class SmlAttribute extends SmlNamedNode {
         }
         return this;
     }
-    assureValueCountMinMax(min, max) {
-        if (min !== null && this._values.length < min) {
-            throw new Error(`Attribute "${this.name}" must have a minimum value count of ${min} but has ${this._values.length}`);
+    assureValueCountMinMax(min, max = null) {
+        if (min !== null) {
+            if (min < 1) {
+                throw new RangeError(`Min value must be greater equal one`);
+            }
+            if (this._values.length < min) {
+                throw new Error(`Attribute "${this.name}" must have a minimum value count of ${min} but has ${this._values.length}`);
+            }
         }
-        if (max !== null && this._values.length > max) {
-            throw new Error(`Attribute "${this.name}" must have a maximum value count of ${min} but has ${this._values.length}`);
+        if (max !== null) {
+            if (max < 1) {
+                throw new RangeError(`Max value must be greater equal one`);
+            }
+            if (this._values.length > max) {
+                throw new Error(`Attribute "${this.name}" must have a maximum value count of ${min} but has ${this._values.length}`);
+            }
         }
         return this;
     }
     getNullableString(index = 0) {
-        if (index >= this._values.length) {
-            throw new Error(`Index of ${index} for attribute "${this.name}" exceeds maximum index of ${this._values.length - 1}`);
+        if (!(index >= 0 && index < this._values.length)) {
+            throw new Error(`Index of ${index} for attribute "${this.name}" is out of range`);
         }
-        let value = this._values[index];
+        const value = this._values[index];
         return value;
     }
     getString(index = 0) {
-        let value = this.getNullableString(index);
+        const value = this.getNullableString(index);
         if (value === null) {
             throw new Error(`Value of attribute "${this.name}" at index ${index} is null`);
         }
         return value;
     }
     getNullableStringArray(startIndex = 0) {
-        if (startIndex > this._values.length) {
-            throw new Error(`Index of ${startIndex} for attribute "${this.name}" exceeds maximum index of ${this._values.length - 1}`);
+        if (!(startIndex >= 0 && startIndex < this._values.length)) {
+            throw new Error(`Index of ${startIndex} for attribute "${this.name}" is out of range`);
         }
         return this._values.slice(startIndex);
     }
     getStringArray(startIndex = 0) {
-        let array = this.getNullableStringArray(startIndex);
+        const array = this.getNullableStringArray(startIndex);
         if (array.indexOf(null) >= 0) {
             throw new Error(`Attribute "${this.name}" has a null value`);
         }
         return array;
     }
     getBool(index = 0) {
-        let value = this.getNullableString(index);
+        const strValue = this.getString(index);
+        const value = SmlValueUtil.getBoolOrNull(strValue);
         if (value === null) {
-            throw new Error(`Value of attribute "${this.name}" at index ${index} is null`);
+            throw new Error(`Value of attribute "${this.name}" at index ${index} is not a bool`);
         }
-        value = value.toLowerCase();
-        if (value === "true") {
-            return true;
-        }
-        else if (value === "false") {
-            return false;
-        }
-        throw new Error(`Value of attribute "${this.name}" at index ${index} is not a bool`);
+        return value;
     }
     getInt(index = 0) {
-        let value = this.getNullableString(index);
+        const strValue = this.getString(index);
+        const value = SmlValueUtil.getIntOrNull(strValue);
         if (value === null) {
-            throw new Error(`Value of attribute "${this.name}" at index ${index} is null`);
+            throw new Error(`Value of attribute "${this.name}" at index ${index} is not an integer`);
         }
-        if (value.match(/^[-+]?[0-9]+$/)) {
-            return parseInt(value);
-        }
-        throw new Error(`Value of attribute "${this.name}" at index ${index} is not an integer`);
+        return value;
     }
     getFloat(index = 0) {
-        let value = this.getNullableString(index);
+        const strValue = this.getString(index);
+        const value = SmlValueUtil.getFloatOrNull(strValue);
         if (value === null) {
-            throw new Error(`Value of attribute "${this.name}" at index ${index} is null`);
+            throw new Error(`Value of attribute "${this.name}" at index ${index} is not a float`);
         }
-        if (value.match(/^[-+]?[0-9]+(\.[0-9]+([eE][-+]?[0-9]+)?)?$/)) {
-            return parseFloat(value);
-        }
-        throw new Error(`Value of attribute "${this.name}" at index ${index} is not a float`);
+        return value;
     }
     getEnum(enumValues, index = 0) {
-        let value = this.getString(index);
-        for (let i = 0; i < enumValues.length; i++) {
-            let enumValue = enumValues[i];
-            if (SmlStringUtil.equalsIgnoreCase(value, enumValue)) {
-                return i;
-            }
+        const strValue = this.getString(index);
+        const value = SmlValueUtil.getEnumOrNull(strValue, enumValues);
+        if (value === null) {
+            throw new Error(`Value of attribute "${this.name}" at index ${index} is not a valid enum value`);
         }
-        throw new Error(`Value "${value}" of attribute "${this.name}" at index ${index} is not a valid enum value`);
+        return value;
+    }
+    getBytes(index = 0) {
+        const strValue = this.getString(index);
+        const bytes = SmlValueUtil.getBytesOrNull(strValue);
+        if (bytes === null) {
+            throw new Error(`Value of attribute "${this.name}" at index ${index} is not a Reliable Base64 string`);
+        }
+        return bytes;
     }
     asNullableString() {
         return this.assureValueCount(1).getNullableString();
@@ -229,44 +317,107 @@ class SmlAttribute extends SmlNamedNode {
         this.assureValueCountMinMax(min, max);
         return this.getStringArray();
     }
-    asIntArray(min = null, max = null) {
-        this.assureValueCountMinMax(min, max);
-        let values = [];
-        for (let i = 0; i < this._values.length; i++) {
-            values.push(this.getInt(i));
-        }
-        return values;
-    }
-    asFloatArray(min = null, max = null) {
-        this.assureValueCountMinMax(min, max);
-        let values = [];
-        for (let i = 0; i < this._values.length; i++) {
-            values.push(this.getFloat(i));
-        }
-        return values;
-    }
     asBool() {
         return this.assureValueCount(1).getBool();
-    }
-    asFloat() {
-        return this.assureValueCount(1).getFloat();
     }
     asInt() {
         return this.assureValueCount(1).getInt();
     }
-    asDateTime() {
-        this.assureValueCountMinMax(2, 3);
-        let dateStr = this.getString(0);
-        let timeStr = this.getString(1);
-        let zoneStr = "";
-        if (this._values.length > 2) {
-            zoneStr = this.getString(2);
-        }
-        let dateTimeStr = `${dateStr}T${timeStr}${zoneStr}`;
-        return new Date(dateTimeStr);
+    asFloat() {
+        return this.assureValueCount(1).getFloat();
     }
     asEnum(enumValues) {
         return this.assureValueCount(1).getEnum(enumValues);
+    }
+    asBytes() {
+        return this.assureValueCount(1).getBytes();
+    }
+    asIntArray(min = null, max = null) {
+        this.assureValueCountMinMax(min, max);
+        return this._values.map((strValue, index) => {
+            if (strValue === null) {
+                throw new Error(`Value of attribute "${this.name}" at index ${index} is null`);
+            }
+            const value = SmlValueUtil.getIntOrNull(strValue);
+            if (value === null) {
+                throw new Error(`Value "${strValue}" of attribute "${this.name}" at index ${index} is not an integer`);
+            }
+            return value;
+        });
+    }
+    asFloatArray(min = null, max = null) {
+        this.assureValueCountMinMax(min, max);
+        return this._values.map((strValue, index) => {
+            if (strValue === null) {
+                throw new Error(`Value of attribute "${this.name}" at index ${index} is null`);
+            }
+            const value = SmlValueUtil.getFloatOrNull(strValue);
+            if (value === null) {
+                throw new Error(`Value "${strValue}" of attribute "${this.name}" at index ${index} is not a float`);
+            }
+            return value;
+        });
+    }
+    isNullValue() {
+        return this._values.length === 1 && this._values[0] === null;
+    }
+    setNullableString(value, index = null) {
+        if (index === null) {
+            this._values = [value];
+        }
+        else {
+            if (!(index >= 0 && index < this._values.length)) {
+                throw new RangeError(`Index ${index} is out of range`);
+            }
+            this._values[index] = value;
+        }
+        return this;
+    }
+    setString(value, index = null) {
+        this.setNullableString(value, index);
+        return this;
+    }
+    setBool(value, index = null) {
+        this.setNullableString(SmlValueUtil.getBoolString(value), index);
+        return this;
+    }
+    setInt(value, index = null) {
+        this.setNullableString(SmlValueUtil.getIntString(value), index);
+        return this;
+    }
+    setFloat(value, index = null) {
+        this.setNullableString(SmlValueUtil.getFloatString(value), index);
+        return this;
+    }
+    setEnum(value, enumValues, index = null) {
+        this.setNullableString(SmlValueUtil.getEnumString(value, enumValues), index);
+        return this;
+    }
+    setBytes(bytes, index = null) {
+        this.setNullableString(SmlValueUtil.getBytesString(bytes), index);
+        return this;
+    }
+    setIntArray(values) {
+        if (values.length === 0) {
+            throw new TypeError(`Int array must contain at least one value`);
+        }
+        this._values = values.map((value) => {
+            return SmlValueUtil.getIntString(value);
+        });
+        return this;
+    }
+    setFloatArray(values) {
+        if (values.length === 0) {
+            throw new TypeError(`Float array must contain at least one value`);
+        }
+        this._values = values.map((value) => {
+            return SmlValueUtil.getFloatString(value);
+        });
+        return this;
+    }
+    setNull(index = null) {
+        this.setNullableString(null, index);
+        return this;
     }
 }
 exports.SmlAttribute = SmlAttribute;
@@ -293,6 +444,9 @@ class SmlElement extends SmlNamedNode {
             this._endWhitespaces = null;
         }
     }
+    get hasEndWhitespaces() {
+        return this._endWhitespaces !== null;
+    }
     get endComment() {
         return this._endComment;
     }
@@ -306,18 +460,18 @@ class SmlElement extends SmlNamedNode {
     addNode(node) {
         this.nodes.push(node);
     }
-    addAttribute(name, values) {
-        let attribute = new SmlAttribute(name, values);
+    addAttribute(name, values = [null]) {
+        const attribute = new SmlAttribute(name, values);
         this.addNode(attribute);
         return attribute;
     }
     addElement(name) {
-        let element = new SmlElement(name);
+        const element = new SmlElement(name);
         this.addNode(element);
         return element;
     }
-    addEmptyNode() {
-        let emptyNode = new SmlEmptyNode();
+    addEmptyNode(whitespaces = null, comment = null) {
+        const emptyNode = new SmlEmptyNode(whitespaces, comment);
         this.addNode(emptyNode);
         return emptyNode;
     }
@@ -350,7 +504,7 @@ class SmlElement extends SmlNamedNode {
             some(namedNode => namedNode.hasName(name));
     }
     namedNode(name) {
-        let result = this.nodes.
+        const result = this.nodes.
             filter(node => node instanceof SmlNamedNode).
             map(node => node).
             find(namedNode => namedNode.hasName(name));
@@ -360,7 +514,7 @@ class SmlElement extends SmlNamedNode {
         return result;
     }
     namedNodeOrNull(name) {
-        let result = this.nodes.
+        const result = this.nodes.
             filter(node => node instanceof SmlNamedNode).
             map(node => node).
             find(namedNode => namedNode.hasName(name));
@@ -398,7 +552,7 @@ class SmlElement extends SmlNamedNode {
             some(element => element.hasName(name));
     }
     element(name) {
-        let result = this.nodes.
+        const result = this.nodes.
             filter(node => node instanceof SmlElement).
             map(node => node).
             find(element => element.hasName(name));
@@ -408,7 +562,7 @@ class SmlElement extends SmlNamedNode {
         return result;
     }
     elementOrNull(name) {
-        let result = this.nodes.
+        const result = this.nodes.
             filter(node => node instanceof SmlElement).
             map(node => node).
             find(element => element.hasName(name));
@@ -446,7 +600,7 @@ class SmlElement extends SmlNamedNode {
             some(attribute => attribute.hasName(name));
     }
     attribute(name) {
-        let result = this.nodes.
+        const result = this.nodes.
             filter(node => node instanceof SmlAttribute).
             map(node => node).
             find(attribute => attribute.hasName(name));
@@ -456,7 +610,7 @@ class SmlElement extends SmlNamedNode {
         return result;
     }
     attributeOrNull(name) {
-        let result = this.nodes.
+        const result = this.nodes.
             filter(node => node instanceof SmlAttribute).
             map(node => node).
             find(attribute => attribute.hasName(name));
@@ -465,28 +619,40 @@ class SmlElement extends SmlNamedNode {
         }
         return result;
     }
+    hasEmptyNodes() {
+        return this.nodes.
+            some(node => node instanceof SmlEmptyNode);
+    }
+    emptyNodes() {
+        return this.nodes.
+            filter(node => node instanceof SmlEmptyNode).
+            map(node => node);
+    }
+    isEmpty() {
+        return !this.hasNamedNodes();
+    }
     toString(preserveWhitespaceAndComment = true) {
         return SmlSerializer.serializeElement(this, preserveWhitespaceAndComment);
     }
-    serialize(lines, level, defaultIndentation, endKeyword, preserveWhitespaceAndComment) {
+    internalSerialize(lines, level, defaultIndentation, endKeyword, preserveWhitespaceAndComment) {
         if (endKeyword !== null && this.hasName(endKeyword)) {
             throw new Error(`Element name matches the end keyword "${endKeyword}"`);
         }
         if (preserveWhitespaceAndComment) {
-            SmlSerializer.serializeValuesWhitespacesAndComment([this.name], this._whitespaces, this._comment, lines, level, defaultIndentation);
-            let childLevel = level + 1;
-            for (let child of this.nodes) {
-                child.serialize(lines, childLevel, defaultIndentation, endKeyword, preserveWhitespaceAndComment);
+            SmlSerializer.internalSerializeValuesWhitespacesAndComment([this.name], this._whitespaces, this._comment, lines, level, defaultIndentation);
+            const childLevel = level + 1;
+            for (const child of this.nodes) {
+                child.internalSerialize(lines, childLevel, defaultIndentation, endKeyword, preserveWhitespaceAndComment);
             }
-            SmlSerializer.serializeValuesWhitespacesAndComment([endKeyword], this._endWhitespaces, this._endComment, lines, level, defaultIndentation);
+            SmlSerializer.internalSerializeValuesWhitespacesAndComment([endKeyword], this._endWhitespaces, this._endComment, lines, level, defaultIndentation);
         }
         else {
-            SmlSerializer.serializeValuesWhitespacesAndComment([this.name], null, null, lines, level, defaultIndentation);
-            let childLevel = level + 1;
-            for (let child of this.nodes) {
-                child.serialize(lines, childLevel, defaultIndentation, endKeyword, preserveWhitespaceAndComment);
+            SmlSerializer.internalSerializeValuesWhitespacesAndComment([this.name], null, null, lines, level, defaultIndentation);
+            const childLevel = level + 1;
+            for (const child of this.nodes) {
+                child.internalSerialize(lines, childLevel, defaultIndentation, endKeyword, preserveWhitespaceAndComment);
             }
-            SmlSerializer.serializeValuesWhitespacesAndComment([endKeyword], null, null, lines, level, defaultIndentation);
+            SmlSerializer.internalSerializeValuesWhitespacesAndComment([endKeyword], null, null, lines, level, defaultIndentation);
         }
     }
     toMinifiedString() {
@@ -497,59 +663,59 @@ class SmlElement extends SmlNamedNode {
         this.nodes = this.nodes.filter(node => !(node instanceof SmlEmptyNode));
         this._endWhitespaces = null;
         this._endComment = null;
-        for (let node of this.nodes) {
+        for (const node of this.nodes) {
             node.minify();
         }
     }
     alignAttributes(whitespaceBetween = " ", maxColumns = null, rightAligned = null) {
         var _a;
-        let attributes = this.attributes();
-        let whitespacesArray = [];
-        let valuesArray = [];
+        const attributes = this.attributes();
+        const whitespacesArray = [];
+        const valuesArray = [];
         let numColumns = 0;
         wsv_1.WsvStringUtil.validateWhitespaceString(whitespaceBetween, false);
-        for (let attribute of attributes) {
+        for (const attribute of attributes) {
             whitespacesArray.push([null]);
-            let values = [attribute.name, ...attribute.values];
+            const values = [attribute.name, ...attribute.values];
             numColumns = Math.max(numColumns, values.length);
             valuesArray.push(values);
         }
         if (maxColumns !== null) {
             numColumns = maxColumns;
         }
-        for (let c = 0; c < numColumns; c++) {
+        for (let curColumnIndex = 0; curColumnIndex < numColumns; curColumnIndex++) {
             let maxLength = 0;
             for (let i = 0; i < attributes.length; i++) {
-                let values = valuesArray[i];
-                if (c >= values.length) {
+                const values = valuesArray[i];
+                if (curColumnIndex >= values.length) {
                     continue;
                 }
-                let value = values[c];
-                let serializedValue = wsv_1.WsvSerializer.serializeValue(value);
+                const value = values[curColumnIndex];
+                const serializedValue = wsv_1.WsvValue.serialize(value);
                 maxLength = Math.max(maxLength, serializedValue.length);
             }
             for (let i = 0; i < attributes.length; i++) {
-                let values = valuesArray[i];
-                if (c >= values.length) {
+                const values = valuesArray[i];
+                if (curColumnIndex >= values.length) {
                     continue;
                 }
-                let value = valuesArray[i][c];
-                let serializedValue = wsv_1.WsvSerializer.serializeValue(value);
-                let lengthDif = maxLength - serializedValue.length;
-                let whitespace = " ".repeat(lengthDif) + whitespaceBetween;
-                if (rightAligned !== null && rightAligned[c]) {
-                    let last = (_a = whitespacesArray[i][whitespacesArray[i].length - 1]) !== null && _a !== void 0 ? _a : "";
-                    whitespacesArray[i][whitespacesArray[i].length - 1] = last + whitespace;
-                    if (c >= values.length - 1) {
+                const value = valuesArray[i][curColumnIndex];
+                const serializedValue = wsv_1.WsvValue.serialize(value);
+                const lengthDif = maxLength - serializedValue.length;
+                const fillingWhitespace = " ".repeat(lengthDif);
+                if (rightAligned !== null && rightAligned[curColumnIndex]) {
+                    const last = (_a = whitespacesArray[i][whitespacesArray[i].length - 1]) !== null && _a !== void 0 ? _a : "";
+                    whitespacesArray[i][whitespacesArray[i].length - 1] = last + fillingWhitespace;
+                    if (curColumnIndex >= values.length - 1) {
                         continue;
                     }
                     whitespacesArray[i].push(whitespaceBetween);
                 }
                 else {
-                    if (c >= values.length - 1) {
+                    if (curColumnIndex >= values.length - 1) {
                         continue;
                     }
-                    whitespacesArray[i].push(whitespace);
+                    whitespacesArray[i].push(fillingWhitespace + whitespaceBetween);
                 }
             }
         }
@@ -564,68 +730,149 @@ class SmlElement extends SmlNamedNode {
         return this;
     }
     assureElementNames(names) {
-        elementLoop: for (let element of this.elements()) {
-            for (let name of names) {
+        elementLoop: for (const element of this.elements()) {
+            for (const name of names) {
                 if (element.hasName(name)) {
                     continue elementLoop;
                 }
             }
             throw new Error(`Not allowed element with name "${element.name}" found in element "${this.name}"`);
         }
+        return this;
     }
     assureAttributeNames(names) {
-        attributeLoop: for (let attribute of this.attributes()) {
-            for (let name of names) {
+        attributeLoop: for (const attribute of this.attributes()) {
+            for (const name of names) {
                 if (attribute.hasName(name)) {
                     continue attributeLoop;
                 }
             }
             throw new Error(`Not allowed attribute with name "${attribute.name}" found in element "${this.name}"`);
         }
+        return this;
     }
     assureNoElements() {
         if (this.elements().length > 0) {
             throw new Error(`Element with name "${this.name}" cannot have elements`);
         }
+        return this;
     }
-    assureElementCount(count) {
-        if (this.elements().length !== count) {
-            throw new Error(`Element with name "${this.name}" must have ${count} element(s)`);
+    assureElementCount(count, name) {
+        if (name === undefined) {
+            if (this.elements().length !== count) {
+                throw new Error(`Element with name "${this.name}" must have ${count} element(s)`);
+            }
         }
+        else {
+            if (this.elements(name).length !== count) {
+                throw new Error(`Element with name "${this.name}" must have ${count} element(s) with name "${name}"`);
+            }
+        }
+        return this;
+    }
+    assureElementCountMinMax(min, max = null, name) {
+        if (name === undefined) {
+            const elementCount = this.elements().length;
+            if (min !== null) {
+                if (min < 0) {
+                    throw new RangeError(`Min value must be greater equal zero`);
+                }
+                if (elementCount < min) {
+                    throw new Error(`Element "${this.name}" must have a minimum element count of ${min} but has ${elementCount}`);
+                }
+            }
+            if (max !== null) {
+                if (max < 0) {
+                    throw new RangeError(`Max value must be greater equal zero`);
+                }
+                if (elementCount > max) {
+                    throw new Error(`Element "${this.name}" must have a maximum element count of ${min} but has ${elementCount}`);
+                }
+            }
+        }
+        else {
+            const elementCount = this.elements(name).length;
+            if (min !== null) {
+                if (min < 0) {
+                    throw new RangeError(`Min value must be greater equal zero`);
+                }
+                if (elementCount < min) {
+                    throw new Error(`Element "${this.name}" must have a minimum element count of ${min} with name "${name}" but has ${elementCount}`);
+                }
+            }
+            if (max !== null) {
+                if (max < 0) {
+                    throw new RangeError(`Max value must be greater equal zero`);
+                }
+                if (elementCount > max) {
+                    throw new Error(`Element "${this.name}" must have a maximum element count of ${min} with name "${name}" but has ${elementCount}`);
+                }
+            }
+        }
+        return this;
     }
     assureNoAttributes() {
         if (this.attributes().length > 0) {
             throw new Error(`Element with name "${this.name}" cannot have attributes`);
         }
+        return this;
     }
-    optionalAttribute(attributeName) {
-        let attributes = this.attributes(attributeName);
-        if (attributes.length > 1) {
-            throw new Error(`Element "${this.name}" must contain one or no attribute "${attributeName}" but contains ${attributes.length}`);
-        }
-        if (attributes.length === 0) {
-            return null;
+    assureAttributeCount(count, name) {
+        if (name === undefined) {
+            if (this.attributes().length !== count) {
+                throw new Error(`Element with name "${this.name}" must have ${count} attribute(s)`);
+            }
         }
         else {
-            return attributes[0];
+            if (this.attributes(name).length !== count) {
+                throw new Error(`Element with name "${this.name}" must have ${count} attribute(s) with name "${name}"`);
+            }
         }
+        return this;
     }
-    requiredAttribute(attributeName) {
-        let attributes = this.attributes(attributeName);
-        if (attributes.length !== 1) {
-            throw new Error(`Element "${this.name}" must contain one attribute "${attributeName}" but contains ${attributes.length}`);
+    assureAttributeCountMinMax(min, max = null, name) {
+        if (name === undefined) {
+            const attributeCount = this.attributes().length;
+            if (min !== null) {
+                if (min < 0) {
+                    throw new RangeError(`Min value must be greater equal zero`);
+                }
+                if (attributeCount < min) {
+                    throw new Error(`Element "${this.name}" must have a minimum attribute count of ${min} but has ${attributeCount}`);
+                }
+            }
+            if (max !== null) {
+                if (max < 0) {
+                    throw new RangeError(`Max value must be greater equal zero`);
+                }
+                if (attributeCount > max) {
+                    throw new Error(`Element "${this.name}" must have a maximum attribute count of ${min} but has ${attributeCount}`);
+                }
+            }
         }
-        return attributes[0];
-    }
-    oneOrMoreAttributes(attributeName) {
-        let attributes = this.attributes(attributeName);
-        if (attributes.length < 1) {
-            throw new Error(`Element "${this.name}" must contain at least one attribute "${attributeName}" but contains 0`);
+        else {
+            const attributeCount = this.attributes(name).length;
+            if (min !== null) {
+                if (min < 0) {
+                    throw new RangeError(`Min value must be greater equal zero`);
+                }
+                if (attributeCount < min) {
+                    throw new Error(`Element "${this.name}" must have a minimum attribute count of ${min} with name "${name}" but has ${attributeCount}`);
+                }
+            }
+            if (max !== null) {
+                if (max < 0) {
+                    throw new RangeError(`Max value must be greater equal zero`);
+                }
+                if (attributeCount > max) {
+                    throw new Error(`Element "${this.name}" must have a maximum attribute count of ${min} with name "${name}" but has ${attributeCount}`);
+                }
+            }
         }
-        return attributes;
+        return this;
     }
     optionalElement(elementName) {
-        let elements = this.elements(elementName);
+        const elements = this.elements(elementName);
         if (elements.length > 1) {
             throw new Error(`Element "${this.name}" must contain one or no element "${elementName}" but contains ${elements.length}`);
         }
@@ -637,48 +884,95 @@ class SmlElement extends SmlNamedNode {
         }
     }
     requiredElement(elementName) {
-        let elements = this.elements(elementName);
+        const elements = this.elements(elementName);
         if (elements.length !== 1) {
             throw new Error(`Element "${this.name}" must contain one element "${elementName}" but contains ${elements.length}`);
         }
         return elements[0];
     }
     oneOrMoreElements(elementName) {
-        let elements = this.elements(elementName);
+        const elements = this.elements(elementName);
         if (elements.length < 1) {
             throw new Error(`Element "${this.name}" must contain at least one element "${elementName}" but contains 0`);
         }
         return elements;
     }
-    assureChoice(elementNames, attributeNames, optional = false) {
+    optionalAttribute(attributeName) {
+        const attributes = this.attributes(attributeName);
+        if (attributes.length > 1) {
+            throw new Error(`Element "${this.name}" must contain one or no attribute "${attributeName}" but contains ${attributes.length}`);
+        }
+        if (attributes.length === 0) {
+            return null;
+        }
+        else {
+            return attributes[0];
+        }
+    }
+    requiredAttribute(attributeName) {
+        const attributes = this.attributes(attributeName);
+        if (attributes.length !== 1) {
+            throw new Error(`Element "${this.name}" must contain one attribute "${attributeName}" but contains ${attributes.length}`);
+        }
+        return attributes[0];
+    }
+    oneOrMoreAttributes(attributeName) {
+        const attributes = this.attributes(attributeName);
+        if (attributes.length < 1) {
+            throw new Error(`Element "${this.name}" must contain at least one attribute "${attributeName}" but contains 0`);
+        }
+        return attributes;
+    }
+    assureEmpty() {
+        if (!this.isEmpty()) {
+            throw new Error(`Element with name "${this.name}" must be empty`);
+        }
+        return this;
+    }
+    assureChoice(elementNames, attributeNames, canBeEmpty = false) {
+        const hasElementNames = elementNames !== null && elementNames.length > 0;
+        const hasAttributeNames = attributeNames !== null && attributeNames.length > 0;
+        if (!hasElementNames && !hasAttributeNames) {
+            throw new RangeError(`No element or attribute names specified`);
+        }
         let foundNodeName = null;
         let wasAttribute = false;
         if (elementNames !== null) {
-            for (let elementName of elementNames) {
+            for (const elementName of elementNames) {
                 if (this.hasElement(elementName)) {
                     if (foundNodeName !== null) {
                         throw new Error(`Element "${this.name}" cannot contain an element "${foundNodeName}" and an element "${elementName}"`);
                     }
                     foundNodeName = elementName;
+                    this.assureElementCount(1, elementName);
                 }
             }
         }
         if (attributeNames !== null) {
-            for (let attributeName of attributeNames) {
+            for (const attributeName of attributeNames) {
                 if (this.hasAttribute(attributeName)) {
                     if (foundNodeName !== null) {
                         throw new Error(`Element "${this.name}" cannot contain an ${wasAttribute ? "attribute" : "element"} "${foundNodeName}" and an attribute "${attributeName}"`);
                     }
                     foundNodeName = attributeName;
                     wasAttribute = true;
+                    this.assureAttributeCount(1, attributeName);
                 }
             }
         }
-        if (foundNodeName === null && !optional) {
-            let elementStr = null;
-            let attributeStr = null;
-            throw new Error(`Element "${this.name}" must contain ${elementStr}${(elementStr !== null && attributeStr !== null) ? " or " : ""}${attributeStr}`);
+        if (foundNodeName === null && !canBeEmpty) {
+            if (hasElementNames && !hasAttributeNames) {
+                throw new Error(`Element "${this.name}" must contain one of the following elements: ${elementNames.join(", ")}`);
+            }
+            else if (!hasElementNames && hasAttributeNames) {
+                throw new Error(`Element "${this.name}" must contain one of the following attributes: ${attributeNames.join(", ")}`);
+            }
+            else {
+                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                throw new Error(`Element "${this.name}" must contain one of the following elements: ${elementNames.join(", ")} or attributes: ${attributeNames.join(", ")}`);
+            }
         }
+        return this;
     }
     static internalSetEndWhitespacesAndComment(element, endWhitespaces, endComment) {
         element._endWhitespaces = endWhitespaces;
@@ -719,16 +1013,36 @@ class SmlDocument {
         return this.root.toMinifiedString();
     }
     getBytes(preserveWhitespacesAndComments = true) {
-        let str = this.toString(preserveWhitespacesAndComments);
+        const str = this.toString(preserveWhitespacesAndComments);
         return new reliabletxt_1.ReliableTxtDocument(str, this.encoding).getBytes();
     }
-    static parse(content, preserveWhitespaceAndComments = true) {
+    toBase64String(preserveWhitespacesAndComments = true) {
+        const str = this.toString(preserveWhitespacesAndComments);
+        return reliabletxt_1.Base64String.fromText(str, this.encoding);
+    }
+    toJaggedArray() {
+        // TODO optimize
+        const content = this.toString(false);
+        return wsv_1.WsvDocument.parseAsJaggedArray(content);
+    }
+    static parse(content, preserveWhitespaceAndComments = true, encoding = reliabletxt_1.ReliableTxtEncoding.Utf8) {
         if (preserveWhitespaceAndComments) {
-            return SmlParser.parseDocument(content);
+            return SmlParser.parseDocument(content, encoding);
         }
         else {
-            return SmlParser.parseDocumentNonPreserving(content);
+            return SmlParser.parseDocumentNonPreserving(content, encoding);
         }
+    }
+    static fromBytes(bytes, preserveWhitespaceAndComments = true) {
+        const txtDocument = reliabletxt_1.ReliableTxtDocument.fromBytes(bytes);
+        return SmlDocument.parse(txtDocument.text, preserveWhitespaceAndComments, txtDocument.encoding);
+    }
+    static fromJaggedArray(jaggedArray, encoding = reliabletxt_1.ReliableTxtEncoding.Utf8) {
+        return SmlParser.parseJaggedArray(jaggedArray, encoding);
+    }
+    static fromBase64String(base64Str) {
+        const bytes = reliabletxt_1.Base64String.toBytes(base64Str);
+        return this.fromBytes(bytes);
     }
 }
 exports.SmlDocument = SmlDocument;
@@ -742,35 +1056,39 @@ exports.SmlStringUtil = SmlStringUtil;
 // ----------------------------------------------------------------------
 class SmlSerializer {
     static serializeDocument(document, preserveWhitespaceAndComment) {
-        let lines = [];
-        SmlSerializer.serialzeEmptyNodes(document.emptyNodesBefore, lines);
-        document.root.serialize(lines, 0, document.defaultIndentation, document.endKeyword, preserveWhitespaceAndComment);
-        SmlSerializer.serialzeEmptyNodes(document.emptyNodesAfter, lines);
+        const lines = [];
+        if (preserveWhitespaceAndComment) {
+            SmlSerializer.serialzeEmptyNodes(document.emptyNodesBefore, lines);
+        }
+        document.root.internalSerialize(lines, 0, document.defaultIndentation, document.endKeyword, preserveWhitespaceAndComment);
+        if (preserveWhitespaceAndComment) {
+            SmlSerializer.serialzeEmptyNodes(document.emptyNodesAfter, lines);
+        }
         return reliabletxt_1.ReliableTxtLines.join(lines);
     }
     static serializeElementMinified(element) {
-        let lines = [];
-        element.serialize(lines, 0, "", null, false);
+        const lines = [];
+        element.internalSerialize(lines, 0, "", null, false);
         return reliabletxt_1.ReliableTxtLines.join(lines);
     }
     static serializeEmptyNode(emptyNode) {
-        let lines = [];
-        emptyNode.serialize(lines, 0, null, null, true);
+        const lines = [];
+        emptyNode.internalSerialize(lines, 0, null, null, true);
         return lines[0];
     }
     static serializeElement(element, preserveWhitespaceAndComment) {
-        let lines = [];
-        element.serialize(lines, 0, null, "End", preserveWhitespaceAndComment);
+        const lines = [];
+        element.internalSerialize(lines, 0, null, "End", preserveWhitespaceAndComment);
         return reliabletxt_1.ReliableTxtLines.join(lines);
     }
     static serializeAttribute(attribute, preserveWhitespaceAndComment) {
-        let lines = [];
-        attribute.serialize(lines, 0, null, null, preserveWhitespaceAndComment);
+        const lines = [];
+        attribute.internalSerialize(lines, 0, null, null, preserveWhitespaceAndComment);
         return lines[0];
     }
     static serialzeEmptyNodes(emptyNodes, lines) {
-        for (let emptyNode of emptyNodes) {
-            emptyNode.serialize(lines, 0, null, null, true);
+        for (const emptyNode of emptyNodes) {
+            emptyNode.internalSerialize(lines, 0, null, null, true);
         }
     }
     static getWhitespaces(whitespaces, level, defaultIndentation) {
@@ -779,7 +1097,7 @@ class SmlSerializer {
                 if (defaultIndentation === null) {
                     defaultIndentation = "\t";
                 }
-                let indentStr = defaultIndentation.repeat(level);
+                const indentStr = defaultIndentation.repeat(level);
                 return [indentStr, ...whitespaces.slice(1)];
             }
             return whitespaces;
@@ -787,12 +1105,12 @@ class SmlSerializer {
         if (defaultIndentation === null) {
             defaultIndentation = "\t";
         }
-        let indentStr = defaultIndentation.repeat(level);
+        const indentStr = defaultIndentation.repeat(level);
         return [indentStr];
     }
-    static serializeValuesWhitespacesAndComment(values, whitespaces, comment, lines, level, defaultIndentation) {
+    static internalSerializeValuesWhitespacesAndComment(values, whitespaces, comment, lines, level, defaultIndentation) {
         whitespaces = SmlSerializer.getWhitespaces(whitespaces, level, defaultIndentation);
-        lines.push(wsv_1.WsvSerializer.serializeValuesWhitespacesAndComment(values, whitespaces, comment));
+        lines.push(wsv_1.WsvSerializer.internalSerializeValuesWhitespacesAndComment(values, whitespaces, comment));
     }
 }
 exports.SmlSerializer = SmlSerializer;
@@ -824,12 +1142,12 @@ class WsvDocumentLineIterator {
         return this.getLine().values;
     }
     getLine() {
-        let line = this.wsvDocument.lines[this.index];
+        const line = this.wsvDocument.lines[this.index];
         this.index++;
         return line;
     }
     toString() {
-        let result = "(" + this.index + "): ";
+        let result = "(" + (this.index + 1) + "): ";
         if (this.hasLine()) {
             result += this.wsvDocument.lines[this.index].toString();
         }
@@ -860,14 +1178,14 @@ class WsvJaggedArrayLineIterator {
         return new wsv_1.WsvLine(this.getLineAsArray());
     }
     getLineAsArray() {
-        let line = this.lines[this.index];
+        const line = this.lines[this.index];
         this.index++;
         return line;
     }
     toString() {
-        let result = "(" + this.index + "): ";
+        let result = "(" + (this.index + 1) + "): ";
         if (this.hasLine()) {
-            let line = this.lines[this.index];
+            const line = this.lines[this.index];
             if (line !== null) {
                 result += wsv_1.WsvSerializer.serializeValues(line);
             }
@@ -881,21 +1199,23 @@ class WsvJaggedArrayLineIterator {
 exports.WsvJaggedArrayLineIterator = WsvJaggedArrayLineIterator;
 // ----------------------------------------------------------------------
 class SmlParser {
-    static parseDocument(content) {
-        let wsvDocument = wsv_1.WsvDocument.parse(content);
-        let endKeyword = SmlParser.determineEndKeyword(wsvDocument);
-        let iterator = new WsvDocumentLineIterator(wsvDocument, endKeyword);
-        let emptyNodesBefore = [];
-        let rootElement = SmlParser.readRootElement(iterator, emptyNodesBefore);
+    static parseDocument(content, encoding = reliabletxt_1.ReliableTxtEncoding.Utf8) {
+        const wsvDocument = wsv_1.WsvDocument.parse(content);
+        const endKeyword = SmlParser.determineEndKeyword(wsvDocument);
+        const iterator = new WsvDocumentLineIterator(wsvDocument, endKeyword);
+        const emptyNodesBefore = [];
+        const rootElement = SmlParser.readRootElement(iterator, emptyNodesBefore);
         SmlParser.readElementContent(iterator, rootElement);
-        let emptyNodesAfter = [];
+        const emptyNodesAfter = [];
         SmlParser.readEmptyNodes(emptyNodesAfter, iterator);
         if (iterator.hasLine()) {
             throw SmlParser.getError(iterator, SmlParser.onlyOneRootElementAllowed);
         }
-        let document = new SmlDocument(rootElement);
+        const document = new SmlDocument(rootElement);
+        document.encoding = encoding;
         document.endKeyword = endKeyword;
         document.emptyNodesBefore = emptyNodesBefore;
+        document.emptyNodesAfter = emptyNodesAfter;
         return document;
     }
     static equalIgnoreCase(name1, name2) {
@@ -912,32 +1232,39 @@ class SmlParser {
         if (!iterator.hasLine()) {
             throw SmlParser.getError(iterator, SmlParser.rootElementExpected);
         }
-        let rootStartLine = iterator.getLine();
+        const rootStartLine = iterator.getLine();
         if (!rootStartLine.hasValues || rootStartLine.values.length !== 1 || SmlParser.equalIgnoreCase(iterator.getEndKeyword(), rootStartLine.values[0])) {
             throw SmlParser.getLastLineException(iterator, SmlParser.invalidRootElementStart);
         }
-        let rootElementName = rootStartLine.values[0];
+        const rootElementName = rootStartLine.values[0];
         if (rootElementName === null) {
             throw SmlParser.getLastLineException(iterator, SmlParser.nullValueAsElementNameIsNotAllowed);
         }
-        let rootElement = new SmlElement(rootElementName);
-        SmlNode.internalSetWhitespacesAndComment(rootElement, wsv_1.WsvLine.internalWhitespaces(rootStartLine), rootStartLine.comment);
+        const rootElement = new SmlElement(rootElementName);
+        SmlNode.internalSetWhitespacesAndComment(rootElement, this.getLineWhitespaces(rootStartLine), rootStartLine.comment);
         return rootElement;
     }
+    static getLineWhitespaces(line) {
+        const lineWhitespaces = wsv_1.WsvLine.internalWhitespaces(line);
+        if (lineWhitespaces !== null && lineWhitespaces.length > 0 && lineWhitespaces[0] === null) {
+            lineWhitespaces[0] = "";
+        }
+        return lineWhitespaces;
+    }
     static readNode(iterator, parentElement) {
-        let line = iterator.getLine();
+        const line = iterator.getLine();
         if (line.hasValues) {
-            let name = line.values[0];
+            const name = line.values[0];
             if (line.values.length === 1) {
                 if (SmlParser.equalIgnoreCase(iterator.getEndKeyword(), name)) {
-                    SmlElement.internalSetEndWhitespacesAndComment(parentElement, wsv_1.WsvLine.internalWhitespaces(line), line.comment);
+                    SmlElement.internalSetEndWhitespacesAndComment(parentElement, this.getLineWhitespaces(line), line.comment);
                     return null;
                 }
                 if (name === null) {
                     throw SmlParser.getLastLineException(iterator, SmlParser.nullValueAsElementNameIsNotAllowed);
                 }
-                let childElement = new SmlElement(name);
-                SmlNode.internalSetWhitespacesAndComment(childElement, wsv_1.WsvLine.internalWhitespaces(line), line.comment);
+                const childElement = new SmlElement(name);
+                SmlNode.internalSetWhitespacesAndComment(childElement, this.getLineWhitespaces(line), line.comment);
                 SmlParser.readElementContent(iterator, childElement);
                 return childElement;
             }
@@ -945,24 +1272,24 @@ class SmlParser {
                 if (name === null) {
                     throw SmlParser.getLastLineException(iterator, SmlParser.nullValueAsAttributeNameIsNotAllowed);
                 }
-                let values = line.values.slice(1);
-                let childAttribute = new SmlAttribute(name, values);
-                SmlNode.internalSetWhitespacesAndComment(childAttribute, wsv_1.WsvLine.internalWhitespaces(line), line.comment);
+                const values = line.values.slice(1);
+                const childAttribute = new SmlAttribute(name, values);
+                SmlNode.internalSetWhitespacesAndComment(childAttribute, this.getLineWhitespaces(line), line.comment);
                 return childAttribute;
             }
         }
         else {
-            let emptyNode = new SmlEmptyNode();
-            SmlNode.internalSetWhitespacesAndComment(emptyNode, wsv_1.WsvLine.internalWhitespaces(line), line.comment);
+            const emptyNode = new SmlEmptyNode();
+            SmlNode.internalSetWhitespacesAndComment(emptyNode, this.getLineWhitespaces(line), line.comment);
             return emptyNode;
         }
     }
     static readElementContent(iterator, element) {
-        while (true) {
+        for (;;) {
             if (!iterator.hasLine()) {
                 throw SmlParser.getLastLineException(iterator, `Element "${element.name}" not closed`);
             }
-            let node = SmlParser.readNode(iterator, element);
+            const node = SmlParser.readNode(iterator, element);
             if (node === null) {
                 break;
             }
@@ -971,19 +1298,19 @@ class SmlParser {
     }
     static readEmptyNodes(nodes, iterator) {
         while (iterator.isEmptyLine()) {
-            let emptyNode = SmlParser.readEmptyNode(iterator);
+            const emptyNode = SmlParser.readEmptyNode(iterator);
             nodes.push(emptyNode);
         }
     }
     static readEmptyNode(iterator) {
-        let line = iterator.getLine();
-        let emptyNode = new SmlEmptyNode();
-        SmlNode.internalSetWhitespacesAndComment(emptyNode, wsv_1.WsvLine.internalWhitespaces(line), line.comment);
+        const line = iterator.getLine();
+        const emptyNode = new SmlEmptyNode();
+        SmlNode.internalSetWhitespacesAndComment(emptyNode, this.getLineWhitespaces(line), line.comment);
         return emptyNode;
     }
     static determineEndKeyword(wsvDocument) {
         for (let i = wsvDocument.lines.length - 1; i >= 0; i--) {
-            let values = wsvDocument.lines[i].values;
+            const values = wsvDocument.lines[i].values;
             if (values != null) {
                 if (values.length === 1) {
                     return values[0];
@@ -1001,15 +1328,16 @@ class SmlParser {
     static getLastLineException(iterator, message) {
         return new SmlParserError(iterator.getLineIndex() - 1, message);
     }
-    static parseDocumentNonPreserving(content) {
-        let wsvLines = wsv_1.WsvDocument.parseAsJaggedArray(content);
-        return SmlParser.parseJaggedArray(wsvLines);
+    static parseDocumentNonPreserving(content, encoding = reliabletxt_1.ReliableTxtEncoding.Utf8) {
+        const wsvLines = wsv_1.WsvDocument.parseAsJaggedArray(content);
+        return SmlParser.parseJaggedArray(wsvLines, encoding);
     }
-    static parseJaggedArray(wsvLines) {
-        let endKeyword = SmlParser.determineEndKeywordFromJaggedArray(wsvLines);
-        let iterator = new WsvJaggedArrayLineIterator(wsvLines, endKeyword);
-        let rootElement = SmlParser.parseDocumentNonPreservingInternal(iterator);
-        let document = new SmlDocument(rootElement);
+    static parseJaggedArray(wsvLines, encoding = reliabletxt_1.ReliableTxtEncoding.Utf8) {
+        const endKeyword = SmlParser.determineEndKeywordFromJaggedArray(wsvLines);
+        const iterator = new WsvJaggedArrayLineIterator(wsvLines, endKeyword);
+        const rootElement = SmlParser.parseDocumentNonPreservingInternal(iterator);
+        const document = new SmlDocument(rootElement);
+        document.encoding = encoding;
         document.endKeyword = endKeyword;
         return document;
     }
@@ -1018,7 +1346,7 @@ class SmlParser {
         if (!iterator.hasLine()) {
             throw SmlParser.getError(iterator, SmlParser.rootElementExpected);
         }
-        let node = SmlParser.readNodeNonPreserving(iterator);
+        const node = SmlParser.readNodeNonPreserving(iterator);
         if (!(node instanceof SmlElement)) {
             throw SmlParser.getLastLineException(iterator, SmlParser.invalidRootElementStart);
         }
@@ -1034,8 +1362,8 @@ class SmlParser {
         }
     }
     static readNodeNonPreserving(iterator) {
-        let line = iterator.getLineAsArray();
-        let name = line[0];
+        const line = iterator.getLineAsArray();
+        const name = line[0];
         if (line.length === 1) {
             if (SmlParser.equalIgnoreCase(iterator.getEndKeyword(), name)) {
                 return null;
@@ -1043,7 +1371,7 @@ class SmlParser {
             if (name === null) {
                 throw SmlParser.getLastLineException(iterator, SmlParser.nullValueAsElementNameIsNotAllowed);
             }
-            let element = new SmlElement(name);
+            const element = new SmlElement(name);
             SmlParser.readElementContentNonPreserving(iterator, element);
             return element;
         }
@@ -1051,18 +1379,18 @@ class SmlParser {
             if (name === null) {
                 throw SmlParser.getLastLineException(iterator, SmlParser.nullValueAsAttributeNameIsNotAllowed);
             }
-            let values = line.slice(1);
-            let attribute = new SmlAttribute(name, values);
+            const values = line.slice(1);
+            const attribute = new SmlAttribute(name, values);
             return attribute;
         }
     }
     static readElementContentNonPreserving(iterator, element) {
-        while (true) {
+        for (;;) {
             SmlParser.skipEmptyLines(iterator);
             if (!iterator.hasLine()) {
                 throw SmlParser.getLastLineException(iterator, `Element "${element.name}" not closed`);
             }
-            let node = SmlParser.readNodeNonPreserving(iterator);
+            const node = SmlParser.readNodeNonPreserving(iterator);
             if (node === null) {
                 break;
             }
@@ -1071,7 +1399,7 @@ class SmlParser {
     }
     static determineEndKeywordFromJaggedArray(lines) {
         for (let i = lines.length - 1; i >= 0; i--) {
-            let values = lines[i];
+            const values = lines[i];
             if (values.length === 1) {
                 return values[0];
             }
@@ -1089,3 +1417,4 @@ SmlParser.invalidRootElementStart = "Invalid root element start";
 SmlParser.nullValueAsElementNameIsNotAllowed = "Null value as element name is not allowed";
 SmlParser.nullValueAsAttributeNameIsNotAllowed = "Null value as attribute name is not allowed";
 SmlParser.endKeywordCouldNotBeDetected = "End keyword could not be detected";
+//# sourceMappingURL=sml.js.map
