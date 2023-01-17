@@ -1,4 +1,13 @@
 "use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 /* eslint-disable no-irregular-whitespace */
 const reliabletxt_1 = require("@stenway/reliabletxt");
@@ -751,6 +760,22 @@ test("SmlAttribute.setNull", () => {
     expect(new src_1.SmlAttribute("Test", ["Value"]).setNull().values).toEqual([null]);
     expect(new src_1.SmlAttribute("Test", ["Value1", "Value2", "Value3"]).setNull(1).values).toEqual(["Value1", null, "Value3"]);
 });
+describe("SmlAttribute.parse", () => {
+    test.each([
+        ["Attribute1 -"],
+        ["  Attribute2  10 12  #comment"],
+    ])("Given %p", (input) => {
+        expect(src_1.SmlAttribute.parse(input).toString()).toEqual(input);
+    });
+    test.each([
+        ["Attribute1"],
+        [""],
+        ["  "],
+        ["  -  10 12  #comment"],
+    ])("Given %p throws", (input) => {
+        expect(() => src_1.SmlAttribute.parse(input)).toThrowError();
+    });
+});
 // ----------------------------------------------------------------------
 test("SmlElement.endWhitespaces + hasEndWhitespaces", () => {
     const element = new src_1.SmlElement("Test");
@@ -1119,6 +1144,10 @@ test("SmlElement.assureChoice", () => {
     element10.addAttribute("Sub2");
     expect(() => element10.assureChoice(["Sub1", "Sub2"], ["Sub1", "Sub2"])).toThrowError();
 });
+test("SmlElement.parse", () => {
+    const element = src_1.SmlElement.parse("\n#test\nTest\nAttribute1 10\nEnd\n\n");
+    expect(element.toString()).toEqual("Test\nAttribute1 10\nEnd");
+});
 // ----------------------------------------------------------------------
 describe("SmlDocument Constructor", () => {
     test.each([
@@ -1273,7 +1302,7 @@ test("SmlParserError.constructor", () => {
 // ----------------------------------------------------------------------
 test("WsvDocumentLineIterator", () => {
     const wsvDocument = wsv_1.WsvDocument.parse(`Root\nEnd`);
-    const iterator = new src_1.WsvDocumentLineIterator(wsvDocument, "End");
+    const iterator = new src_1.SyncWsvDocumentLineIterator(wsvDocument, "End");
     const lineArray = iterator.getLineAsArray();
     expect(lineArray).toEqual(["Root"]);
     expect(iterator.toString()).toEqual("(2): End");
@@ -1281,21 +1310,100 @@ test("WsvDocumentLineIterator", () => {
 // ----------------------------------------------------------------------
 test("WsvJaggedArrayLineIterator", () => {
     const jaggedArray = [["Root"], ["Attribute", "1", "2"], ["End"]];
-    const iterator = new src_1.WsvJaggedArrayLineIterator(jaggedArray, "End");
+    const iterator = new src_1.SyncWsvJaggedArrayLineIterator(jaggedArray, "End");
     expect(iterator.getLineAsArray()).toEqual(["Root"]);
     expect(iterator.getLine()).toEqual(new wsv_1.WsvLine(["Attribute", "1", "2"]));
     expect(iterator.toString()).toEqual("(3): End");
 });
 // ----------------------------------------------------------------------
+class TestWsvDocumentLineIterator {
+    constructor(wsvDocument, endKeyword) {
+        this.index = 0;
+        this.wsvDocument = wsvDocument;
+        this.endKeyword = endKeyword;
+    }
+    getEndKeyword() {
+        return this.endKeyword;
+    }
+    hasLine() {
+        return __awaiter(this, void 0, void 0, function* () {
+            return this.index < this.wsvDocument.lines.length;
+        });
+    }
+    isEmptyLine() {
+        return __awaiter(this, void 0, void 0, function* () {
+            return (yield this.hasLine()) && !this.wsvDocument.lines[this.index].hasValues;
+        });
+    }
+    getLineAsArray() {
+        return __awaiter(this, void 0, void 0, function* () {
+            return (yield this.getLine()).values;
+        });
+    }
+    getLine() {
+        return __awaiter(this, void 0, void 0, function* () {
+            const line = this.wsvDocument.lines[this.index];
+            this.index++;
+            return line;
+        });
+    }
+    toString() {
+        let result = "(" + (this.index + 1) + "): ";
+        if (this.index < this.wsvDocument.lines.length) {
+            result += this.wsvDocument.lines[this.index].toString();
+        }
+        return result;
+    }
+    getLineIndex() {
+        return this.index;
+    }
+}
+// ----------------------------------------------------------------------
 test("SmlParser", () => {
-    const document1 = src_1.SmlParser.parseDocument(` Root \nEnd`);
+    const document1 = src_1.SmlParser.parseDocumentSync(` Root \nEnd`);
     expect(document1.encoding).toEqual(reliabletxt_1.ReliableTxtEncoding.Utf8);
     expect(document1.toString()).toEqual(` Root \nEnd`);
-    const document2 = src_1.SmlParser.parseDocumentNonPreserving(` Root \nEnd`);
+    const document2 = src_1.SmlParser.parseDocumentNonPreservingSync(` Root \nEnd`);
     expect(document2.encoding).toEqual(reliabletxt_1.ReliableTxtEncoding.Utf8);
     expect(document2.toString()).toEqual(`Root\nEnd`);
-    const document3 = src_1.SmlParser.parseJaggedArray([["Root"], ["End"]]);
+    const document3 = src_1.SmlParser.parseJaggedArraySync([["Root"], ["End"]]);
     expect(document3.encoding).toEqual(reliabletxt_1.ReliableTxtEncoding.Utf8);
     expect(document3.toString()).toEqual(`Root\nEnd`);
+});
+describe("SmlParser Async", () => {
+    test("Given", () => __awaiter(void 0, void 0, void 0, function* () {
+        const document = wsv_1.WsvDocument.parse("Root\nAttribute1 10\nSub\nSubAttr -\nEnd\n#comment\nEnd");
+        const iterator = new TestWsvDocumentLineIterator(document, "End");
+        const emptyNodes = [];
+        const rootElement = yield src_1.SmlParser.readRootElement(iterator, emptyNodes);
+        expect(rootElement.name).toEqual("Root");
+        const node1 = yield src_1.SmlParser.readNode(iterator, rootElement);
+        expect(node1.toString()).toEqual("Attribute1 10");
+        const node2 = yield src_1.SmlParser.readNode(iterator, rootElement);
+        expect(node2.toString()).toEqual("Sub\nSubAttr -\nEnd");
+        const node3 = yield src_1.SmlParser.readNode(iterator, rootElement);
+        expect(node3.toString()).toEqual("#comment");
+    }));
+    test.each([
+        [""],
+        [`-`],
+        [`End`],
+    ])("Given %p throws", (input) => __awaiter(void 0, void 0, void 0, function* () {
+        const document = wsv_1.WsvDocument.parse(input);
+        const iterator = new TestWsvDocumentLineIterator(document, "End");
+        const emptyNodes = [];
+        yield expect(() => __awaiter(void 0, void 0, void 0, function* () { return yield src_1.SmlParser.readRootElement(iterator, emptyNodes); })).rejects.toThrowError();
+    }));
+    test.each([
+        ["Root\nSub"],
+        ["Root\n-"],
+        ["Root\n- 1"],
+    ])("Given %p throws", (input) => __awaiter(void 0, void 0, void 0, function* () {
+        const document = wsv_1.WsvDocument.parse(input);
+        const iterator = new TestWsvDocumentLineIterator(document, "End");
+        const emptyNodes = [];
+        const rootElement = yield src_1.SmlParser.readRootElement(iterator, emptyNodes);
+        yield expect(() => __awaiter(void 0, void 0, void 0, function* () { return yield src_1.SmlParser.readNode(iterator, rootElement); })).rejects.toThrowError();
+    }));
 });
 //# sourceMappingURL=sml.test.js.map

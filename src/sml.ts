@@ -426,6 +426,10 @@ export class SmlAttribute extends SmlNamedNode {
 		this.setNullableString(null, index)
 		return this
 	}
+
+	static parse(content: string, preserveWhitespaceAndComments: boolean = true): SmlAttribute {
+		return SmlParser.parseAttributeSync(content, preserveWhitespaceAndComments)
+	}
 }
 
 // ----------------------------------------------------------------------
@@ -914,6 +918,11 @@ export class SmlElement extends SmlNamedNode {
 		return this
 	}
 
+	static parse(content: string, preserveWhitespaceAndComments: boolean = true): SmlElement {
+		// TODO optimize
+		return SmlDocument.parse(content, preserveWhitespaceAndComments).root
+	}
+
 	static internalSetEndWhitespacesAndComment(element: SmlElement, endWhitespaces: (string | null)[] | null, endComment: string | null) {
 		element._endWhitespaces = endWhitespaces
 		element._endComment = endComment
@@ -980,8 +989,8 @@ export class SmlDocument {
 	}
 
 	static parse(content: string, preserveWhitespaceAndComments: boolean = true, encoding: ReliableTxtEncoding = ReliableTxtEncoding.Utf8): SmlDocument {
-		if (preserveWhitespaceAndComments) { return SmlParser.parseDocument(content, encoding) }
-		else { return SmlParser.parseDocumentNonPreserving(content, encoding) }
+		if (preserveWhitespaceAndComments) { return SmlParser.parseDocumentSync(content, encoding) }
+		else { return SmlParser.parseDocumentNonPreservingSync(content, encoding) }
 	}
 
 	static fromBytes(bytes: Uint8Array, preserveWhitespaceAndComments: boolean = true): SmlDocument {
@@ -990,7 +999,7 @@ export class SmlDocument {
 	}
 
 	static fromJaggedArray(jaggedArray: (string | null)[][], encoding: ReliableTxtEncoding = ReliableTxtEncoding.Utf8): SmlDocument {
-		return SmlParser.parseJaggedArray(jaggedArray, encoding)
+		return SmlParser.parseJaggedArraySync(jaggedArray, encoding)
 	}
 
 	static fromBase64String(base64Str: string): SmlDocument {
@@ -1083,7 +1092,7 @@ export class SmlParserError extends Error {
 
 // ----------------------------------------------------------------------
 
-export interface WsvLineIterator {	
+export interface SyncWsvLineIterator {	
 	hasLine(): boolean
 	isEmptyLine(): boolean
 	getLine(): WsvLine
@@ -1094,7 +1103,18 @@ export interface WsvLineIterator {
 
 // ----------------------------------------------------------------------
 
-export class WsvDocumentLineIterator implements WsvLineIterator {
+export interface WsvLineIterator {	
+	hasLine(): Promise<boolean>
+	isEmptyLine(): Promise<boolean>
+	getLine(): Promise<WsvLine>
+	getLineAsArray(): Promise<(string | null)[]>
+	getEndKeyword(): string | null
+	getLineIndex(): number
+}
+
+// ----------------------------------------------------------------------
+
+export class SyncWsvDocumentLineIterator implements SyncWsvLineIterator {
 	private wsvDocument: WsvDocument
 	private endKeyword: string | null
 
@@ -1142,7 +1162,7 @@ export class WsvDocumentLineIterator implements WsvLineIterator {
 
 // ----------------------------------------------------------------------
 
-export class WsvJaggedArrayLineIterator implements WsvLineIterator {
+export class SyncWsvJaggedArrayLineIterator implements SyncWsvLineIterator {
 	private lines: (string | null)[][]
 	private endKeyword: string | null
 	private index: number = 0
@@ -1200,19 +1220,34 @@ export abstract class SmlParser {
 	private static readonly nullValueAsAttributeNameIsNotAllowed: string	= "Null value as attribute name is not allowed"
 	private static readonly endKeywordCouldNotBeDetected: string			= "End keyword could not be detected"
 	
-	static parseDocument(content: string, encoding: ReliableTxtEncoding = ReliableTxtEncoding.Utf8): SmlDocument {
+	static parseAttributeSync(content: string, preserveWhitespacesAndComments: boolean): SmlAttribute {
+		const line = WsvLine.parse(content, preserveWhitespacesAndComments)
+		if (line.values.length < 2) { throw new SmlParserError(0, "Attribute line must have at least two values") }
+		const name = line.values[0]
+		if (name === null) {
+			throw new SmlParserError(0, SmlParser.nullValueAsAttributeNameIsNotAllowed)
+		}
+		const values: (string | null)[] = line.values.slice(1)
+		const childAttribute: SmlAttribute = new SmlAttribute(name, values)
+		if (preserveWhitespacesAndComments) {
+			SmlNode.internalSetWhitespacesAndComment(childAttribute, this.getLineWhitespaces(line), line.comment)
+		}
+		return childAttribute
+	}
+
+	static parseDocumentSync(content: string, encoding: ReliableTxtEncoding = ReliableTxtEncoding.Utf8): SmlDocument {
 		const wsvDocument: WsvDocument = WsvDocument.parse(content)
-		const endKeyword: string | null = SmlParser.determineEndKeyword(wsvDocument)
-		const iterator: WsvLineIterator = new WsvDocumentLineIterator(wsvDocument, endKeyword)
+		const endKeyword: string | null = SmlParser.determineEndKeywordSync(wsvDocument)
+		const iterator: SyncWsvLineIterator = new SyncWsvDocumentLineIterator(wsvDocument, endKeyword)
 		
 		const emptyNodesBefore: SmlEmptyNode[] = []
-		const rootElement: SmlElement = SmlParser.readRootElement(iterator, emptyNodesBefore)
-		SmlParser.readElementContent(iterator, rootElement)
+		const rootElement: SmlElement = SmlParser.readRootElementSync(iterator, emptyNodesBefore)
+		SmlParser.readElementContentSync(iterator, rootElement)
 		
 		const emptyNodesAfter: SmlEmptyNode[] = []
-		SmlParser.readEmptyNodes(emptyNodesAfter, iterator)
+		SmlParser.readEmptyNodesSync(emptyNodesAfter, iterator)
 		if (iterator.hasLine()) {
-			throw SmlParser.getError(iterator, SmlParser.onlyOneRootElementAllowed)
+			throw SmlParser.getErrorSync(iterator, SmlParser.onlyOneRootElementAllowed)
 		}
 
 		const document: SmlDocument = new SmlDocument(rootElement)
@@ -1231,13 +1266,31 @@ export abstract class SmlParser {
 		return SmlStringUtil.equalsIgnoreCase(name1, name2)
 	}
 	
-	static readRootElement(iterator: WsvLineIterator, emptyNodesBefore: SmlEmptyNode[]): SmlElement {
-		SmlParser.readEmptyNodes(emptyNodesBefore, iterator)
+	static readRootElementSync(iterator: SyncWsvLineIterator, emptyNodesBefore: SmlEmptyNode[]): SmlElement {
+		SmlParser.readEmptyNodesSync(emptyNodesBefore, iterator)
 		
 		if (!iterator.hasLine()) {
-			throw SmlParser.getError(iterator, SmlParser.rootElementExpected)
+			throw SmlParser.getErrorSync(iterator, SmlParser.rootElementExpected)
 		}
 		const rootStartLine: WsvLine = iterator.getLine()
+		if (!rootStartLine.hasValues || rootStartLine.values.length !== 1 || SmlParser.equalIgnoreCase(iterator.getEndKeyword(), rootStartLine.values[0])) {
+			throw SmlParser.getLastLineExceptionSync(iterator, SmlParser.invalidRootElementStart)
+		}
+		const rootElementName: string | null = rootStartLine.values[0]
+		if (rootElementName === null) {
+			throw SmlParser.getLastLineExceptionSync(iterator, SmlParser.nullValueAsElementNameIsNotAllowed)
+		}
+		const rootElement: SmlElement = new SmlElement(rootElementName)
+		SmlNode.internalSetWhitespacesAndComment(rootElement, this.getLineWhitespaces(rootStartLine), rootStartLine.comment)
+		return rootElement
+	}
+
+	static async readRootElement(iterator: WsvLineIterator, emptyNodesBefore: SmlEmptyNode[]): Promise<SmlElement> {
+		await SmlParser.readEmptyNodes(emptyNodesBefore, iterator)
+		if (!await iterator.hasLine()) {
+			throw SmlParser.getError(iterator, SmlParser.rootElementExpected)
+		}
+		const rootStartLine: WsvLine = await iterator.getLine()
 		if (!rootStartLine.hasValues || rootStartLine.values.length !== 1 || SmlParser.equalIgnoreCase(iterator.getEndKeyword(), rootStartLine.values[0])) {
 			throw SmlParser.getLastLineException(iterator, SmlParser.invalidRootElementStart)
 		}
@@ -1258,8 +1311,44 @@ export abstract class SmlParser {
 		return lineWhitespaces
 	}
 
-	static readNode(iterator: WsvLineIterator, parentElement: SmlElement): SmlNode | null {
+	static readNodeSync(iterator: SyncWsvLineIterator, parentElement: SmlElement): SmlNode | null {
 		const line: WsvLine = iterator.getLine()
+		if (line.hasValues) {
+			const name: string | null = line.values[0]
+			if (line.values.length === 1) {
+				if (SmlParser.equalIgnoreCase(iterator.getEndKeyword(), name)) {
+					SmlElement.internalSetEndWhitespacesAndComment(parentElement, this.getLineWhitespaces(line), line.comment)
+					return null
+				}
+				if (name === null) {
+					throw SmlParser.getLastLineExceptionSync(iterator, SmlParser.nullValueAsElementNameIsNotAllowed)
+				}
+				const childElement: SmlElement = new SmlElement(name)
+				SmlNode.internalSetWhitespacesAndComment(childElement, this.getLineWhitespaces(line), line.comment)
+
+				SmlParser.readElementContentSync(iterator, childElement)
+
+				return childElement
+			} else {
+				if (name === null) {
+					throw SmlParser.getLastLineExceptionSync(iterator, SmlParser.nullValueAsAttributeNameIsNotAllowed)
+				}
+				const values: (string | null)[] = line.values.slice(1)
+				const childAttribute: SmlAttribute = new SmlAttribute(name, values)
+				SmlNode.internalSetWhitespacesAndComment(childAttribute, this.getLineWhitespaces(line), line.comment)
+				
+				return childAttribute
+			}
+		} else {
+			const emptyNode: SmlEmptyNode = new SmlEmptyNode()
+			SmlNode.internalSetWhitespacesAndComment(emptyNode, this.getLineWhitespaces(line), line.comment)
+
+			return emptyNode
+		}
+	}
+
+	static async readNode(iterator: WsvLineIterator, parentElement: SmlElement): Promise<SmlNode | null> {
+		const line: WsvLine = await iterator.getLine()
 		if (line.hasValues) {
 			const name: string | null = line.values[0]
 			if (line.values.length === 1) {
@@ -1273,7 +1362,7 @@ export abstract class SmlParser {
 				const childElement: SmlElement = new SmlElement(name)
 				SmlNode.internalSetWhitespacesAndComment(childElement, this.getLineWhitespaces(line), line.comment)
 
-				SmlParser.readElementContent(iterator, childElement)
+				await SmlParser.readElementContent(iterator, childElement)
 
 				return childElement
 			} else {
@@ -1294,32 +1383,57 @@ export abstract class SmlParser {
 		}
 	}
 	
-	private static readElementContent(iterator: WsvLineIterator, element: SmlElement) {
+	private static readElementContentSync(iterator: SyncWsvLineIterator, element: SmlElement) {
 		for (;;) {
 			if (!iterator.hasLine()) {
+				throw SmlParser.getLastLineExceptionSync(iterator, `Element "${element.name}" not closed`)
+			}
+			const node: SmlNode | null = SmlParser.readNodeSync(iterator, element)
+			if (node === null) { break }
+			element.addNode(node)
+		}
+	}
+
+	private static async readElementContent(iterator: WsvLineIterator, element: SmlElement) {
+		for (;;) {
+			if (!await iterator.hasLine()) {
 				throw SmlParser.getLastLineException(iterator, `Element "${element.name}" not closed`)
 			}
-			const node: SmlNode | null = SmlParser.readNode(iterator, element)
+			const node: SmlNode | null = await SmlParser.readNode(iterator, element)
 			if (node === null) { break }
 			element.addNode(node)
 		}
 	}
 	
-	private static readEmptyNodes(nodes: SmlEmptyNode[], iterator: WsvLineIterator) {
+	private static readEmptyNodesSync(nodes: SmlEmptyNode[], iterator: SyncWsvLineIterator) {
 		while (iterator.isEmptyLine()) {
-			const emptyNode: SmlEmptyNode = SmlParser.readEmptyNode(iterator)
+			const emptyNode: SmlEmptyNode = SmlParser.readEmptyNodeSync(iterator)
+			nodes.push(emptyNode)
+		}
+	}
+
+	private static async readEmptyNodes(nodes: SmlEmptyNode[], iterator: WsvLineIterator) {
+		while (await iterator.isEmptyLine()) {
+			const emptyNode: SmlEmptyNode = await SmlParser.readEmptyNode(iterator)
 			nodes.push(emptyNode)
 		}
 	}
 	
-	private static readEmptyNode(iterator: WsvLineIterator): SmlEmptyNode {
+	private static readEmptyNodeSync(iterator: SyncWsvLineIterator): SmlEmptyNode {
 		const line: WsvLine = iterator.getLine()
 		const emptyNode: SmlEmptyNode = new SmlEmptyNode()
 		SmlNode.internalSetWhitespacesAndComment(emptyNode, this.getLineWhitespaces(line), line.comment)
 		return emptyNode
 	}
+
+	private static async readEmptyNode(iterator: WsvLineIterator): Promise<SmlEmptyNode> {
+		const line: WsvLine = await iterator.getLine()
+		const emptyNode: SmlEmptyNode = new SmlEmptyNode()
+		SmlNode.internalSetWhitespacesAndComment(emptyNode, this.getLineWhitespaces(line), line.comment)
+		return emptyNode
+	}
 	
-	private static determineEndKeyword(wsvDocument: WsvDocument): string | null {
+	private static determineEndKeywordSync(wsvDocument: WsvDocument): string | null {
 		for (let i=wsvDocument.lines.length-1; i>=0; i--) {
 			const values: (string | null)[] = wsvDocument.lines[i].values
 			if (values != null) {
@@ -1333,24 +1447,32 @@ export abstract class SmlParser {
 		throw new SmlParserError(wsvDocument.lines.length-1, SmlParser.endKeywordCouldNotBeDetected)
 	}
 	
+	private static getErrorSync(iterator: SyncWsvLineIterator, message: string): SmlParserError {
+		return new SmlParserError(iterator.getLineIndex(), message)
+	}
+
 	private static getError(iterator: WsvLineIterator, message: string): SmlParserError {
 		return new SmlParserError(iterator.getLineIndex(), message)
 	}
 
-	private static getLastLineException(iterator: WsvLineIterator, message: string): SmlParserError {
+	private static getLastLineExceptionSync(iterator: SyncWsvLineIterator, message: string): SmlParserError {
 		return new SmlParserError(iterator.getLineIndex()-1, message)
 	}
 	
-	static parseDocumentNonPreserving(content: string, encoding: ReliableTxtEncoding = ReliableTxtEncoding.Utf8): SmlDocument {
+	private static getLastLineException(iterator: WsvLineIterator, message: string): SmlParserError {
+		return new SmlParserError(iterator.getLineIndex()-1, message)
+	}
+
+	static parseDocumentNonPreservingSync(content: string, encoding: ReliableTxtEncoding = ReliableTxtEncoding.Utf8): SmlDocument {
 		const wsvLines: (string | null)[][] = WsvDocument.parseAsJaggedArray(content)
-		return SmlParser.parseJaggedArray(wsvLines, encoding)
+		return SmlParser.parseJaggedArraySync(wsvLines, encoding)
 	}
 	
-	static parseJaggedArray(wsvLines: (string | null)[][], encoding: ReliableTxtEncoding = ReliableTxtEncoding.Utf8): SmlDocument {
-		const endKeyword: string | null = SmlParser.determineEndKeywordFromJaggedArray(wsvLines)
-		const iterator: WsvLineIterator = new WsvJaggedArrayLineIterator(wsvLines, endKeyword)
+	static parseJaggedArraySync(wsvLines: (string | null)[][], encoding: ReliableTxtEncoding = ReliableTxtEncoding.Utf8): SmlDocument {
+		const endKeyword: string | null = SmlParser.determineEndKeywordFromJaggedArraySync(wsvLines)
+		const iterator: SyncWsvLineIterator = new SyncWsvJaggedArrayLineIterator(wsvLines, endKeyword)
 		
-		const rootElement: SmlElement = SmlParser.parseDocumentNonPreservingInternal(iterator)
+		const rootElement: SmlElement = SmlParser.parseDocumentNonPreservingInternalSync(iterator)
 		const document: SmlDocument = new SmlDocument(rootElement)
 		document.encoding = encoding
 		document.endKeyword = endKeyword
@@ -1358,32 +1480,32 @@ export abstract class SmlParser {
 		return document
 	}
 	
-	private static parseDocumentNonPreservingInternal(iterator: WsvLineIterator): SmlElement {
-		SmlParser.skipEmptyLines(iterator)
+	private static parseDocumentNonPreservingInternalSync(iterator: SyncWsvLineIterator): SmlElement {
+		SmlParser.skipEmptyLinesSync(iterator)
 		if (!iterator.hasLine()) {
-			throw SmlParser.getError(iterator, SmlParser.rootElementExpected)
+			throw SmlParser.getErrorSync(iterator, SmlParser.rootElementExpected)
 		}
 		
-		const node: SmlNode | null = SmlParser.readNodeNonPreserving(iterator)
+		const node: SmlNode | null = SmlParser.readNodeNonPreservingSync(iterator)
 		if (!(node instanceof SmlElement)) {
-			throw SmlParser.getLastLineException(iterator, SmlParser.invalidRootElementStart)
+			throw SmlParser.getLastLineExceptionSync(iterator, SmlParser.invalidRootElementStart)
 		}
 		
-		SmlParser.skipEmptyLines(iterator)
+		SmlParser.skipEmptyLinesSync(iterator)
 		if (iterator.hasLine()) {
-			throw SmlParser.getError(iterator, SmlParser.onlyOneRootElementAllowed)
+			throw SmlParser.getErrorSync(iterator, SmlParser.onlyOneRootElementAllowed)
 		}
 
 		return node as SmlElement
 	}
 	
-	private static skipEmptyLines(iterator: WsvLineIterator) {
+	private static skipEmptyLinesSync(iterator: SyncWsvLineIterator) {
 		while (iterator.isEmptyLine()) {
 			iterator.getLineAsArray()
 		}
 	}
 	
-	private static readNodeNonPreserving(iterator: WsvLineIterator): SmlNode | null {
+	private static readNodeNonPreservingSync(iterator: SyncWsvLineIterator): SmlNode | null {
 		const line: (string | null)[] = iterator.getLineAsArray()
 		
 		const name: string | null = line[0]
@@ -1392,14 +1514,14 @@ export abstract class SmlParser {
 				return null
 			}
 			if (name === null) {
-				throw SmlParser.getLastLineException(iterator, SmlParser.nullValueAsElementNameIsNotAllowed)
+				throw SmlParser.getLastLineExceptionSync(iterator, SmlParser.nullValueAsElementNameIsNotAllowed)
 			}
 			const element: SmlElement = new SmlElement(name)
-			SmlParser.readElementContentNonPreserving(iterator, element)
+			SmlParser.readElementContentNonPreservingSync(iterator, element)
 			return element
 		} else {
 			if (name === null) {
-				throw SmlParser.getLastLineException(iterator, SmlParser.nullValueAsAttributeNameIsNotAllowed)
+				throw SmlParser.getLastLineExceptionSync(iterator, SmlParser.nullValueAsAttributeNameIsNotAllowed)
 			}
 			const values: (string | null)[] = line.slice(1)
 			const attribute: SmlAttribute = new SmlAttribute(name, values)
@@ -1407,13 +1529,13 @@ export abstract class SmlParser {
 		}
 	}
 	
-	private static readElementContentNonPreserving(iterator: WsvLineIterator, element: SmlElement) {
+	private static readElementContentNonPreservingSync(iterator: SyncWsvLineIterator, element: SmlElement) {
 		for (;;) {
-			SmlParser.skipEmptyLines(iterator)
+			SmlParser.skipEmptyLinesSync(iterator)
 			if (!iterator.hasLine()) {
-				throw SmlParser.getLastLineException(iterator, `Element "${element.name}" not closed`)
+				throw SmlParser.getLastLineExceptionSync(iterator, `Element "${element.name}" not closed`)
 			}
-			const node: SmlNode | null = SmlParser.readNodeNonPreserving(iterator)
+			const node: SmlNode | null = SmlParser.readNodeNonPreservingSync(iterator)
 			if (node === null) {
 				break
 			}
@@ -1421,7 +1543,7 @@ export abstract class SmlParser {
 		}
 	}
 	
-	private static determineEndKeywordFromJaggedArray(lines: (string | null)[][]): string | null {
+	private static determineEndKeywordFromJaggedArraySync(lines: (string | null)[][]): string | null {
 		for (let i=lines.length-1; i>=0; i--) {
 			const values: (string | null)[] = lines[i]
 			if (values.length === 1) {

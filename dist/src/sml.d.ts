@@ -83,6 +83,7 @@ export declare class SmlAttribute extends SmlNamedNode {
     setIntArray(values: number[]): SmlAttribute;
     setFloatArray(values: number[]): SmlAttribute;
     setNull(index?: number | null): SmlAttribute;
+    static parse(content: string, preserveWhitespaceAndComments?: boolean): SmlAttribute;
 }
 export declare class SmlElement extends SmlNamedNode {
     nodes: SmlNode[];
@@ -139,6 +140,7 @@ export declare class SmlElement extends SmlNamedNode {
     oneOrMoreAttributes(attributeName: string): SmlAttribute[];
     assureEmpty(): SmlElement;
     assureChoice(elementNames: string[] | null, attributeNames: string[] | null, canBeEmpty?: boolean): SmlElement;
+    static parse(content: string, preserveWhitespaceAndComments?: boolean): SmlElement;
     static internalSetEndWhitespacesAndComment(element: SmlElement, endWhitespaces: (string | null)[] | null, endComment: string | null): void;
 }
 export declare class SmlDocument {
@@ -179,7 +181,7 @@ export declare class SmlParserError extends Error {
     readonly lineIndex: number;
     constructor(lineIndex: number, message: string);
 }
-export interface WsvLineIterator {
+export interface SyncWsvLineIterator {
     hasLine(): boolean;
     isEmptyLine(): boolean;
     getLine(): WsvLine;
@@ -187,7 +189,15 @@ export interface WsvLineIterator {
     getEndKeyword(): string | null;
     getLineIndex(): number;
 }
-export declare class WsvDocumentLineIterator implements WsvLineIterator {
+export interface WsvLineIterator {
+    hasLine(): Promise<boolean>;
+    isEmptyLine(): Promise<boolean>;
+    getLine(): Promise<WsvLine>;
+    getLineAsArray(): Promise<(string | null)[]>;
+    getEndKeyword(): string | null;
+    getLineIndex(): number;
+}
+export declare class SyncWsvDocumentLineIterator implements SyncWsvLineIterator {
     private wsvDocument;
     private endKeyword;
     private index;
@@ -200,7 +210,7 @@ export declare class WsvDocumentLineIterator implements WsvLineIterator {
     toString(): string;
     getLineIndex(): number;
 }
-export declare class WsvJaggedArrayLineIterator implements WsvLineIterator {
+export declare class SyncWsvJaggedArrayLineIterator implements SyncWsvLineIterator {
     private lines;
     private endKeyword;
     private index;
@@ -220,23 +230,31 @@ export declare abstract class SmlParser {
     private static readonly nullValueAsElementNameIsNotAllowed;
     private static readonly nullValueAsAttributeNameIsNotAllowed;
     private static readonly endKeywordCouldNotBeDetected;
-    static parseDocument(content: string, encoding?: ReliableTxtEncoding): SmlDocument;
+    static parseAttributeSync(content: string, preserveWhitespacesAndComments: boolean): SmlAttribute;
+    static parseDocumentSync(content: string, encoding?: ReliableTxtEncoding): SmlDocument;
     private static equalIgnoreCase;
-    static readRootElement(iterator: WsvLineIterator, emptyNodesBefore: SmlEmptyNode[]): SmlElement;
+    static readRootElementSync(iterator: SyncWsvLineIterator, emptyNodesBefore: SmlEmptyNode[]): SmlElement;
+    static readRootElement(iterator: WsvLineIterator, emptyNodesBefore: SmlEmptyNode[]): Promise<SmlElement>;
     private static getLineWhitespaces;
-    static readNode(iterator: WsvLineIterator, parentElement: SmlElement): SmlNode | null;
+    static readNodeSync(iterator: SyncWsvLineIterator, parentElement: SmlElement): SmlNode | null;
+    static readNode(iterator: WsvLineIterator, parentElement: SmlElement): Promise<SmlNode | null>;
+    private static readElementContentSync;
     private static readElementContent;
+    private static readEmptyNodesSync;
     private static readEmptyNodes;
+    private static readEmptyNodeSync;
     private static readEmptyNode;
-    private static determineEndKeyword;
+    private static determineEndKeywordSync;
+    private static getErrorSync;
     private static getError;
+    private static getLastLineExceptionSync;
     private static getLastLineException;
-    static parseDocumentNonPreserving(content: string, encoding?: ReliableTxtEncoding): SmlDocument;
-    static parseJaggedArray(wsvLines: (string | null)[][], encoding?: ReliableTxtEncoding): SmlDocument;
-    private static parseDocumentNonPreservingInternal;
-    private static skipEmptyLines;
-    private static readNodeNonPreserving;
-    private static readElementContentNonPreserving;
-    private static determineEndKeywordFromJaggedArray;
+    static parseDocumentNonPreservingSync(content: string, encoding?: ReliableTxtEncoding): SmlDocument;
+    static parseJaggedArraySync(wsvLines: (string | null)[][], encoding?: ReliableTxtEncoding): SmlDocument;
+    private static parseDocumentNonPreservingInternalSync;
+    private static skipEmptyLinesSync;
+    private static readNodeNonPreservingSync;
+    private static readElementContentNonPreservingSync;
+    private static determineEndKeywordFromJaggedArraySync;
 }
 //# sourceMappingURL=sml.d.ts.map

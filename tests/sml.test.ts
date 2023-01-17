@@ -1,7 +1,7 @@
 ﻿/* eslint-disable no-irregular-whitespace */
 import { ReliableTxtEncoding } from "@stenway/reliabletxt"
 import { WsvDocument, WsvLine } from "@stenway/wsv"
-import { SmlAttribute, SmlDocument, SmlElement, SmlEmptyNode, SmlNamedNode, SmlNode, SmlParser, SmlParserError, WsvDocumentLineIterator, WsvJaggedArrayLineIterator } from "../src"
+import { SmlAttribute, SmlDocument, SmlElement, SmlEmptyNode, SmlNamedNode, SmlNode, SmlParser, SmlParserError, SyncWsvDocumentLineIterator, SyncWsvJaggedArrayLineIterator, WsvLineIterator } from "../src"
 
 describe("SmlNode.isElement + isAttribute + isEmptyNode + isNamedNode", () => {
 	test.each([
@@ -1040,6 +1040,30 @@ test("SmlAttribute.setNull", () => {
 	expect(new SmlAttribute("Test", ["Value1", "Value2", "Value3"]).setNull(1).values).toEqual(["Value1", null, "Value3"])
 })
 
+describe("SmlAttribute.parse", () => {
+	test.each([
+		["Attribute1 -"],
+		["  Attribute2  10 12  #comment"],
+	])(
+		"Given %p",
+		(input) => {
+			expect(SmlAttribute.parse(input).toString()).toEqual(input)
+		}
+	)
+
+	test.each([
+		["Attribute1"],
+		[""],
+		["  "],
+		["  -  10 12  #comment"],
+	])(
+		"Given %p throws",
+		(input) => {
+			expect(() => SmlAttribute.parse(input)).toThrowError()
+		}
+	)
+})
+
 // ----------------------------------------------------------------------
 
 test("SmlElement.endWhitespaces + hasEndWhitespaces", () => {
@@ -1467,6 +1491,11 @@ test("SmlElement.assureChoice", () => {
 	expect(() => element10.assureChoice(["Sub1", "Sub2"], ["Sub1", "Sub2"])).toThrowError()
 })
 
+test("SmlElement.parse", () => {
+	const element = SmlElement.parse("\n#test\nTest\nAttribute1 10\nEnd\n\n")
+	expect(element.toString()).toEqual("Test\nAttribute1 10\nEnd")
+})
+
 // ----------------------------------------------------------------------
 
 describe("SmlDocument Constructor", () => {
@@ -1661,7 +1690,7 @@ test("SmlParserError.constructor", () => {
 
 test("WsvDocumentLineIterator", () => {
 	const wsvDocument = WsvDocument.parse(`Root\nEnd`)
-	const iterator = new WsvDocumentLineIterator(wsvDocument, "End")
+	const iterator = new SyncWsvDocumentLineIterator(wsvDocument, "End")
 	const lineArray = iterator.getLineAsArray()
 	expect(lineArray).toEqual(["Root"])
 	expect(iterator.toString()).toEqual("(2): End")
@@ -1671,7 +1700,7 @@ test("WsvDocumentLineIterator", () => {
 
 test("WsvJaggedArrayLineIterator", () => {
 	const jaggedArray = [["Root"], ["Attribute", "1", "2"], ["End"]]
-	const iterator = new WsvJaggedArrayLineIterator(jaggedArray, "End")
+	const iterator = new SyncWsvJaggedArrayLineIterator(jaggedArray, "End")
 	expect(iterator.getLineAsArray()).toEqual(["Root"])
 	expect(iterator.getLine()).toEqual(new WsvLine(["Attribute", "1", "2"]))
 	expect(iterator.toString()).toEqual("(3): End")
@@ -1679,16 +1708,113 @@ test("WsvJaggedArrayLineIterator", () => {
 
 // ----------------------------------------------------------------------
 
+class TestWsvDocumentLineIterator implements WsvLineIterator {
+	private wsvDocument: WsvDocument
+	private endKeyword: string | null
+
+	private index: number = 0
+
+	constructor(wsvDocument: WsvDocument, endKeyword: string | null) {
+		this.wsvDocument = wsvDocument
+		this.endKeyword = endKeyword
+	}
+
+	getEndKeyword(): string | null {
+		return this.endKeyword
+	}
+
+	async hasLine(): Promise<boolean> {
+		return this.index < this.wsvDocument.lines.length
+	}
+
+	async isEmptyLine(): Promise<boolean> {
+		return await this.hasLine() && !this.wsvDocument.lines[this.index].hasValues
+	}
+
+	async getLineAsArray(): Promise<(string | null)[]> {
+		return (await this.getLine()).values
+	}
+
+	async getLine(): Promise<WsvLine> {
+		const line: WsvLine = this.wsvDocument.lines[this.index]
+		this.index++
+		return line
+	}
+
+	toString(): string {
+		let result: string = "(" + (this.index + 1) + "): "
+		if (this.index < this.wsvDocument.lines.length) {
+			result += this.wsvDocument.lines[this.index].toString()
+		}
+		return result
+	}
+
+	getLineIndex(): number {
+		return this.index
+	}
+}
+
+// ----------------------------------------------------------------------
+
 test("SmlParser", () => {
-	const document1 = SmlParser.parseDocument(` Root \nEnd`)
+	const document1 = SmlParser.parseDocumentSync(` Root \nEnd`)
 	expect(document1.encoding).toEqual(ReliableTxtEncoding.Utf8)
 	expect(document1.toString()).toEqual(` Root \nEnd`)
 
-	const document2 = SmlParser.parseDocumentNonPreserving(` Root \nEnd`)
+	const document2 = SmlParser.parseDocumentNonPreservingSync(` Root \nEnd`)
 	expect(document2.encoding).toEqual(ReliableTxtEncoding.Utf8)
 	expect(document2.toString()).toEqual(`Root\nEnd`)
 
-	const document3 = SmlParser.parseJaggedArray([["Root"], ["End"]])
+	const document3 = SmlParser.parseJaggedArraySync([["Root"], ["End"]])
 	expect(document3.encoding).toEqual(ReliableTxtEncoding.Utf8)
 	expect(document3.toString()).toEqual(`Root\nEnd`)
+})
+
+describe("SmlParser Async", () => {
+	test("Given", async () => {
+		const document = WsvDocument.parse("Root\nAttribute1 10\nSub\nSubAttr -\nEnd\n#comment\nEnd")
+		const iterator = new TestWsvDocumentLineIterator(document, "End")
+		const emptyNodes: SmlEmptyNode[] = []
+		const rootElement = await SmlParser.readRootElement(iterator, emptyNodes)
+		expect(rootElement.name).toEqual("Root")
+
+		const node1 = await SmlParser.readNode(iterator, rootElement) as SmlAttribute
+		expect(node1.toString()).toEqual("Attribute1 10")
+
+		const node2 = await SmlParser.readNode(iterator, rootElement) as SmlElement
+		expect(node2.toString()).toEqual("Sub\nSubAttr -\nEnd")
+
+		const node3 = await SmlParser.readNode(iterator, rootElement) as SmlEmptyNode
+		expect(node3.toString()).toEqual("#comment")
+	})
+
+	test.each([
+		[""],
+		[`-`],
+		[`End`],
+	])(
+		"Given %p throws",
+		async (input) => {
+			const document = WsvDocument.parse(input)
+			const iterator = new TestWsvDocumentLineIterator(document, "End")
+			const emptyNodes: SmlEmptyNode[] = []
+			await expect(async () => await SmlParser.readRootElement(iterator, emptyNodes)).rejects.toThrowError()
+		}
+	)
+
+	test.each([
+		["Root\nSub"],
+		["Root\n-"],
+		["Root\n- 1"],
+	])(
+		"Given %p throws",
+		async (input) => {
+			const document = WsvDocument.parse(input)
+			const iterator = new TestWsvDocumentLineIterator(document, "End")
+			const emptyNodes: SmlEmptyNode[] = []
+			const rootElement = await SmlParser.readRootElement(iterator, emptyNodes)
+
+			await expect(async () => await SmlParser.readNode(iterator, rootElement)).rejects.toThrowError()
+		}
+	)
 })

@@ -1,7 +1,16 @@
 "use strict";
 /* (C) Stefan John / Stenway / SimpleML.com / 2023 */
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SmlParser = exports.WsvJaggedArrayLineIterator = exports.WsvDocumentLineIterator = exports.SmlParserError = exports.SmlSerializer = exports.SmlStringUtil = exports.SmlDocument = exports.SmlElement = exports.SmlAttribute = exports.SmlValueUtil = exports.SmlNamedNode = exports.SmlEmptyNode = exports.SmlNode = void 0;
+exports.SmlParser = exports.SyncWsvJaggedArrayLineIterator = exports.SyncWsvDocumentLineIterator = exports.SmlParserError = exports.SmlSerializer = exports.SmlStringUtil = exports.SmlDocument = exports.SmlElement = exports.SmlAttribute = exports.SmlValueUtil = exports.SmlNamedNode = exports.SmlEmptyNode = exports.SmlNode = void 0;
 const reliabletxt_1 = require("@stenway/reliabletxt");
 const wsv_1 = require("@stenway/wsv");
 // ----------------------------------------------------------------------
@@ -418,6 +427,9 @@ class SmlAttribute extends SmlNamedNode {
     setNull(index = null) {
         this.setNullableString(null, index);
         return this;
+    }
+    static parse(content, preserveWhitespaceAndComments = true) {
+        return SmlParser.parseAttributeSync(content, preserveWhitespaceAndComments);
     }
 }
 exports.SmlAttribute = SmlAttribute;
@@ -974,6 +986,10 @@ class SmlElement extends SmlNamedNode {
         }
         return this;
     }
+    static parse(content, preserveWhitespaceAndComments = true) {
+        // TODO optimize
+        return SmlDocument.parse(content, preserveWhitespaceAndComments).root;
+    }
     static internalSetEndWhitespacesAndComment(element, endWhitespaces, endComment) {
         element._endWhitespaces = endWhitespaces;
         element._endComment = endComment;
@@ -1027,10 +1043,10 @@ class SmlDocument {
     }
     static parse(content, preserveWhitespaceAndComments = true, encoding = reliabletxt_1.ReliableTxtEncoding.Utf8) {
         if (preserveWhitespaceAndComments) {
-            return SmlParser.parseDocument(content, encoding);
+            return SmlParser.parseDocumentSync(content, encoding);
         }
         else {
-            return SmlParser.parseDocumentNonPreserving(content, encoding);
+            return SmlParser.parseDocumentNonPreservingSync(content, encoding);
         }
     }
     static fromBytes(bytes, preserveWhitespaceAndComments = true) {
@@ -1038,7 +1054,7 @@ class SmlDocument {
         return SmlDocument.parse(txtDocument.text, preserveWhitespaceAndComments, txtDocument.encoding);
     }
     static fromJaggedArray(jaggedArray, encoding = reliabletxt_1.ReliableTxtEncoding.Utf8) {
-        return SmlParser.parseJaggedArray(jaggedArray, encoding);
+        return SmlParser.parseJaggedArraySync(jaggedArray, encoding);
     }
     static fromBase64String(base64Str) {
         const bytes = reliabletxt_1.Base64String.toBytes(base64Str);
@@ -1123,7 +1139,7 @@ class SmlParserError extends Error {
 }
 exports.SmlParserError = SmlParserError;
 // ----------------------------------------------------------------------
-class WsvDocumentLineIterator {
+class SyncWsvDocumentLineIterator {
     constructor(wsvDocument, endKeyword) {
         this.index = 0;
         this.wsvDocument = wsvDocument;
@@ -1157,9 +1173,9 @@ class WsvDocumentLineIterator {
         return this.index;
     }
 }
-exports.WsvDocumentLineIterator = WsvDocumentLineIterator;
+exports.SyncWsvDocumentLineIterator = SyncWsvDocumentLineIterator;
 // ----------------------------------------------------------------------
-class WsvJaggedArrayLineIterator {
+class SyncWsvJaggedArrayLineIterator {
     constructor(lines, endKeyword) {
         this.index = 0;
         this.lines = lines;
@@ -1196,20 +1212,36 @@ class WsvJaggedArrayLineIterator {
         return this.index;
     }
 }
-exports.WsvJaggedArrayLineIterator = WsvJaggedArrayLineIterator;
+exports.SyncWsvJaggedArrayLineIterator = SyncWsvJaggedArrayLineIterator;
 // ----------------------------------------------------------------------
 class SmlParser {
-    static parseDocument(content, encoding = reliabletxt_1.ReliableTxtEncoding.Utf8) {
+    static parseAttributeSync(content, preserveWhitespacesAndComments) {
+        const line = wsv_1.WsvLine.parse(content, preserveWhitespacesAndComments);
+        if (line.values.length < 2) {
+            throw new SmlParserError(0, "Attribute line must have at least two values");
+        }
+        const name = line.values[0];
+        if (name === null) {
+            throw new SmlParserError(0, SmlParser.nullValueAsAttributeNameIsNotAllowed);
+        }
+        const values = line.values.slice(1);
+        const childAttribute = new SmlAttribute(name, values);
+        if (preserveWhitespacesAndComments) {
+            SmlNode.internalSetWhitespacesAndComment(childAttribute, this.getLineWhitespaces(line), line.comment);
+        }
+        return childAttribute;
+    }
+    static parseDocumentSync(content, encoding = reliabletxt_1.ReliableTxtEncoding.Utf8) {
         const wsvDocument = wsv_1.WsvDocument.parse(content);
-        const endKeyword = SmlParser.determineEndKeyword(wsvDocument);
-        const iterator = new WsvDocumentLineIterator(wsvDocument, endKeyword);
+        const endKeyword = SmlParser.determineEndKeywordSync(wsvDocument);
+        const iterator = new SyncWsvDocumentLineIterator(wsvDocument, endKeyword);
         const emptyNodesBefore = [];
-        const rootElement = SmlParser.readRootElement(iterator, emptyNodesBefore);
-        SmlParser.readElementContent(iterator, rootElement);
+        const rootElement = SmlParser.readRootElementSync(iterator, emptyNodesBefore);
+        SmlParser.readElementContentSync(iterator, rootElement);
         const emptyNodesAfter = [];
-        SmlParser.readEmptyNodes(emptyNodesAfter, iterator);
+        SmlParser.readEmptyNodesSync(emptyNodesAfter, iterator);
         if (iterator.hasLine()) {
-            throw SmlParser.getError(iterator, SmlParser.onlyOneRootElementAllowed);
+            throw SmlParser.getErrorSync(iterator, SmlParser.onlyOneRootElementAllowed);
         }
         const document = new SmlDocument(rootElement);
         document.encoding = encoding;
@@ -1227,22 +1259,41 @@ class SmlParser {
         }
         return SmlStringUtil.equalsIgnoreCase(name1, name2);
     }
-    static readRootElement(iterator, emptyNodesBefore) {
-        SmlParser.readEmptyNodes(emptyNodesBefore, iterator);
+    static readRootElementSync(iterator, emptyNodesBefore) {
+        SmlParser.readEmptyNodesSync(emptyNodesBefore, iterator);
         if (!iterator.hasLine()) {
-            throw SmlParser.getError(iterator, SmlParser.rootElementExpected);
+            throw SmlParser.getErrorSync(iterator, SmlParser.rootElementExpected);
         }
         const rootStartLine = iterator.getLine();
         if (!rootStartLine.hasValues || rootStartLine.values.length !== 1 || SmlParser.equalIgnoreCase(iterator.getEndKeyword(), rootStartLine.values[0])) {
-            throw SmlParser.getLastLineException(iterator, SmlParser.invalidRootElementStart);
+            throw SmlParser.getLastLineExceptionSync(iterator, SmlParser.invalidRootElementStart);
         }
         const rootElementName = rootStartLine.values[0];
         if (rootElementName === null) {
-            throw SmlParser.getLastLineException(iterator, SmlParser.nullValueAsElementNameIsNotAllowed);
+            throw SmlParser.getLastLineExceptionSync(iterator, SmlParser.nullValueAsElementNameIsNotAllowed);
         }
         const rootElement = new SmlElement(rootElementName);
         SmlNode.internalSetWhitespacesAndComment(rootElement, this.getLineWhitespaces(rootStartLine), rootStartLine.comment);
         return rootElement;
+    }
+    static readRootElement(iterator, emptyNodesBefore) {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield SmlParser.readEmptyNodes(emptyNodesBefore, iterator);
+            if (!(yield iterator.hasLine())) {
+                throw SmlParser.getError(iterator, SmlParser.rootElementExpected);
+            }
+            const rootStartLine = yield iterator.getLine();
+            if (!rootStartLine.hasValues || rootStartLine.values.length !== 1 || SmlParser.equalIgnoreCase(iterator.getEndKeyword(), rootStartLine.values[0])) {
+                throw SmlParser.getLastLineException(iterator, SmlParser.invalidRootElementStart);
+            }
+            const rootElementName = rootStartLine.values[0];
+            if (rootElementName === null) {
+                throw SmlParser.getLastLineException(iterator, SmlParser.nullValueAsElementNameIsNotAllowed);
+            }
+            const rootElement = new SmlElement(rootElementName);
+            SmlNode.internalSetWhitespacesAndComment(rootElement, this.getLineWhitespaces(rootStartLine), rootStartLine.comment);
+            return rootElement;
+        });
     }
     static getLineWhitespaces(line) {
         const lineWhitespaces = wsv_1.WsvLine.internalWhitespaces(line);
@@ -1251,7 +1302,7 @@ class SmlParser {
         }
         return lineWhitespaces;
     }
-    static readNode(iterator, parentElement) {
+    static readNodeSync(iterator, parentElement) {
         const line = iterator.getLine();
         if (line.hasValues) {
             const name = line.values[0];
@@ -1261,16 +1312,16 @@ class SmlParser {
                     return null;
                 }
                 if (name === null) {
-                    throw SmlParser.getLastLineException(iterator, SmlParser.nullValueAsElementNameIsNotAllowed);
+                    throw SmlParser.getLastLineExceptionSync(iterator, SmlParser.nullValueAsElementNameIsNotAllowed);
                 }
                 const childElement = new SmlElement(name);
                 SmlNode.internalSetWhitespacesAndComment(childElement, this.getLineWhitespaces(line), line.comment);
-                SmlParser.readElementContent(iterator, childElement);
+                SmlParser.readElementContentSync(iterator, childElement);
                 return childElement;
             }
             else {
                 if (name === null) {
-                    throw SmlParser.getLastLineException(iterator, SmlParser.nullValueAsAttributeNameIsNotAllowed);
+                    throw SmlParser.getLastLineExceptionSync(iterator, SmlParser.nullValueAsAttributeNameIsNotAllowed);
                 }
                 const values = line.values.slice(1);
                 const childAttribute = new SmlAttribute(name, values);
@@ -1284,31 +1335,96 @@ class SmlParser {
             return emptyNode;
         }
     }
-    static readElementContent(iterator, element) {
+    static readNode(iterator, parentElement) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const line = yield iterator.getLine();
+            if (line.hasValues) {
+                const name = line.values[0];
+                if (line.values.length === 1) {
+                    if (SmlParser.equalIgnoreCase(iterator.getEndKeyword(), name)) {
+                        SmlElement.internalSetEndWhitespacesAndComment(parentElement, this.getLineWhitespaces(line), line.comment);
+                        return null;
+                    }
+                    if (name === null) {
+                        throw SmlParser.getLastLineException(iterator, SmlParser.nullValueAsElementNameIsNotAllowed);
+                    }
+                    const childElement = new SmlElement(name);
+                    SmlNode.internalSetWhitespacesAndComment(childElement, this.getLineWhitespaces(line), line.comment);
+                    yield SmlParser.readElementContent(iterator, childElement);
+                    return childElement;
+                }
+                else {
+                    if (name === null) {
+                        throw SmlParser.getLastLineException(iterator, SmlParser.nullValueAsAttributeNameIsNotAllowed);
+                    }
+                    const values = line.values.slice(1);
+                    const childAttribute = new SmlAttribute(name, values);
+                    SmlNode.internalSetWhitespacesAndComment(childAttribute, this.getLineWhitespaces(line), line.comment);
+                    return childAttribute;
+                }
+            }
+            else {
+                const emptyNode = new SmlEmptyNode();
+                SmlNode.internalSetWhitespacesAndComment(emptyNode, this.getLineWhitespaces(line), line.comment);
+                return emptyNode;
+            }
+        });
+    }
+    static readElementContentSync(iterator, element) {
         for (;;) {
             if (!iterator.hasLine()) {
-                throw SmlParser.getLastLineException(iterator, `Element "${element.name}" not closed`);
+                throw SmlParser.getLastLineExceptionSync(iterator, `Element "${element.name}" not closed`);
             }
-            const node = SmlParser.readNode(iterator, element);
+            const node = SmlParser.readNodeSync(iterator, element);
             if (node === null) {
                 break;
             }
             element.addNode(node);
         }
     }
-    static readEmptyNodes(nodes, iterator) {
+    static readElementContent(iterator, element) {
+        return __awaiter(this, void 0, void 0, function* () {
+            for (;;) {
+                if (!(yield iterator.hasLine())) {
+                    throw SmlParser.getLastLineException(iterator, `Element "${element.name}" not closed`);
+                }
+                const node = yield SmlParser.readNode(iterator, element);
+                if (node === null) {
+                    break;
+                }
+                element.addNode(node);
+            }
+        });
+    }
+    static readEmptyNodesSync(nodes, iterator) {
         while (iterator.isEmptyLine()) {
-            const emptyNode = SmlParser.readEmptyNode(iterator);
+            const emptyNode = SmlParser.readEmptyNodeSync(iterator);
             nodes.push(emptyNode);
         }
     }
-    static readEmptyNode(iterator) {
+    static readEmptyNodes(nodes, iterator) {
+        return __awaiter(this, void 0, void 0, function* () {
+            while (yield iterator.isEmptyLine()) {
+                const emptyNode = yield SmlParser.readEmptyNode(iterator);
+                nodes.push(emptyNode);
+            }
+        });
+    }
+    static readEmptyNodeSync(iterator) {
         const line = iterator.getLine();
         const emptyNode = new SmlEmptyNode();
         SmlNode.internalSetWhitespacesAndComment(emptyNode, this.getLineWhitespaces(line), line.comment);
         return emptyNode;
     }
-    static determineEndKeyword(wsvDocument) {
+    static readEmptyNode(iterator) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const line = yield iterator.getLine();
+            const emptyNode = new SmlEmptyNode();
+            SmlNode.internalSetWhitespacesAndComment(emptyNode, this.getLineWhitespaces(line), line.comment);
+            return emptyNode;
+        });
+    }
+    static determineEndKeywordSync(wsvDocument) {
         for (let i = wsvDocument.lines.length - 1; i >= 0; i--) {
             const values = wsvDocument.lines[i].values;
             if (values != null) {
@@ -1322,46 +1438,52 @@ class SmlParser {
         }
         throw new SmlParserError(wsvDocument.lines.length - 1, SmlParser.endKeywordCouldNotBeDetected);
     }
+    static getErrorSync(iterator, message) {
+        return new SmlParserError(iterator.getLineIndex(), message);
+    }
     static getError(iterator, message) {
         return new SmlParserError(iterator.getLineIndex(), message);
+    }
+    static getLastLineExceptionSync(iterator, message) {
+        return new SmlParserError(iterator.getLineIndex() - 1, message);
     }
     static getLastLineException(iterator, message) {
         return new SmlParserError(iterator.getLineIndex() - 1, message);
     }
-    static parseDocumentNonPreserving(content, encoding = reliabletxt_1.ReliableTxtEncoding.Utf8) {
+    static parseDocumentNonPreservingSync(content, encoding = reliabletxt_1.ReliableTxtEncoding.Utf8) {
         const wsvLines = wsv_1.WsvDocument.parseAsJaggedArray(content);
-        return SmlParser.parseJaggedArray(wsvLines, encoding);
+        return SmlParser.parseJaggedArraySync(wsvLines, encoding);
     }
-    static parseJaggedArray(wsvLines, encoding = reliabletxt_1.ReliableTxtEncoding.Utf8) {
-        const endKeyword = SmlParser.determineEndKeywordFromJaggedArray(wsvLines);
-        const iterator = new WsvJaggedArrayLineIterator(wsvLines, endKeyword);
-        const rootElement = SmlParser.parseDocumentNonPreservingInternal(iterator);
+    static parseJaggedArraySync(wsvLines, encoding = reliabletxt_1.ReliableTxtEncoding.Utf8) {
+        const endKeyword = SmlParser.determineEndKeywordFromJaggedArraySync(wsvLines);
+        const iterator = new SyncWsvJaggedArrayLineIterator(wsvLines, endKeyword);
+        const rootElement = SmlParser.parseDocumentNonPreservingInternalSync(iterator);
         const document = new SmlDocument(rootElement);
         document.encoding = encoding;
         document.endKeyword = endKeyword;
         return document;
     }
-    static parseDocumentNonPreservingInternal(iterator) {
-        SmlParser.skipEmptyLines(iterator);
+    static parseDocumentNonPreservingInternalSync(iterator) {
+        SmlParser.skipEmptyLinesSync(iterator);
         if (!iterator.hasLine()) {
-            throw SmlParser.getError(iterator, SmlParser.rootElementExpected);
+            throw SmlParser.getErrorSync(iterator, SmlParser.rootElementExpected);
         }
-        const node = SmlParser.readNodeNonPreserving(iterator);
+        const node = SmlParser.readNodeNonPreservingSync(iterator);
         if (!(node instanceof SmlElement)) {
-            throw SmlParser.getLastLineException(iterator, SmlParser.invalidRootElementStart);
+            throw SmlParser.getLastLineExceptionSync(iterator, SmlParser.invalidRootElementStart);
         }
-        SmlParser.skipEmptyLines(iterator);
+        SmlParser.skipEmptyLinesSync(iterator);
         if (iterator.hasLine()) {
-            throw SmlParser.getError(iterator, SmlParser.onlyOneRootElementAllowed);
+            throw SmlParser.getErrorSync(iterator, SmlParser.onlyOneRootElementAllowed);
         }
         return node;
     }
-    static skipEmptyLines(iterator) {
+    static skipEmptyLinesSync(iterator) {
         while (iterator.isEmptyLine()) {
             iterator.getLineAsArray();
         }
     }
-    static readNodeNonPreserving(iterator) {
+    static readNodeNonPreservingSync(iterator) {
         const line = iterator.getLineAsArray();
         const name = line[0];
         if (line.length === 1) {
@@ -1369,35 +1491,35 @@ class SmlParser {
                 return null;
             }
             if (name === null) {
-                throw SmlParser.getLastLineException(iterator, SmlParser.nullValueAsElementNameIsNotAllowed);
+                throw SmlParser.getLastLineExceptionSync(iterator, SmlParser.nullValueAsElementNameIsNotAllowed);
             }
             const element = new SmlElement(name);
-            SmlParser.readElementContentNonPreserving(iterator, element);
+            SmlParser.readElementContentNonPreservingSync(iterator, element);
             return element;
         }
         else {
             if (name === null) {
-                throw SmlParser.getLastLineException(iterator, SmlParser.nullValueAsAttributeNameIsNotAllowed);
+                throw SmlParser.getLastLineExceptionSync(iterator, SmlParser.nullValueAsAttributeNameIsNotAllowed);
             }
             const values = line.slice(1);
             const attribute = new SmlAttribute(name, values);
             return attribute;
         }
     }
-    static readElementContentNonPreserving(iterator, element) {
+    static readElementContentNonPreservingSync(iterator, element) {
         for (;;) {
-            SmlParser.skipEmptyLines(iterator);
+            SmlParser.skipEmptyLinesSync(iterator);
             if (!iterator.hasLine()) {
-                throw SmlParser.getLastLineException(iterator, `Element "${element.name}" not closed`);
+                throw SmlParser.getLastLineExceptionSync(iterator, `Element "${element.name}" not closed`);
             }
-            const node = SmlParser.readNodeNonPreserving(iterator);
+            const node = SmlParser.readNodeNonPreservingSync(iterator);
             if (node === null) {
                 break;
             }
             element.addNode(node);
         }
     }
-    static determineEndKeywordFromJaggedArray(lines) {
+    static determineEndKeywordFromJaggedArraySync(lines) {
         for (let i = lines.length - 1; i >= 0; i--) {
             const values = lines[i];
             if (values.length === 1) {
