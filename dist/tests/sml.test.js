@@ -401,7 +401,7 @@ describe("SmlAttribute.getEnum", () => {
 describe("SmlAttribute.getBytes", () => {
     test.each([
         [["Base64||"], 0, []],
-        [["Base64|TWFuTQ==|"], 0, [0x4d, 0x61, 0x6e, 0x4d]],
+        [["Base64|TWFuTQ|"], 0, [0x4d, 0x61, 0x6e, 0x4d]],
     ])("Given %p and %p returns %p", (input1, input2, output) => {
         expect(new src_1.SmlAttribute("Test", input1).getBytes(input2)).toEqual(new Uint8Array(output));
     });
@@ -560,7 +560,7 @@ describe("SmlAttribute.asEnum", () => {
 describe("SmlAttribute.asBytes", () => {
     test.each([
         [["Base64||"], []],
-        [["Base64|TWFuTQ==|"], [0x4d, 0x61, 0x6e, 0x4d]],
+        [["Base64|TWFuTQ|"], [0x4d, 0x61, 0x6e, 0x4d]],
     ])("Given %p returns %p", (input, output) => {
         expect(new src_1.SmlAttribute("Test", input).asBytes()).toEqual(new Uint8Array(output));
     });
@@ -718,7 +718,7 @@ describe("SmlAttribute.setEnum", () => {
 describe("SmlAttribute.setBytes", () => {
     test.each([
         [[], "Base64||"],
-        [[0x4d, 0x61, 0x6e, 0x4d], "Base64|TWFuTQ==|"],
+        [[0x4d, 0x61, 0x6e, 0x4d], "Base64|TWFuTQ|"],
     ])("Given %p returns %p", (input, output) => {
         expect(new src_1.SmlAttribute("Test").setBytes(new Uint8Array(input)).values).toEqual([output]);
     });
@@ -941,6 +941,13 @@ describe("SmlElement.alignAttributes", () => {
         element.addAttribute("Attribute 3", ["Value2", "V3", "V4", "V5"]);
         element.alignAttributes(input1, input2, input3);
         expect(element.toString()).toEqual(output);
+    });
+    test("Supplementary characters", () => {
+        const element = new src_1.SmlElement("Test");
+        element.addAttribute("A1", ["Va2", "Val3", "Value4", "Value 5", null]);
+        element.addAttribute("Attibute2", ["𝄞𝄞", "𝄞𝄞𝄞𝄞", "𝄞𝄞𝄞𝄞𝄞𝄞𝄞"]);
+        element.alignAttributes();
+        expect(element.toString()).toEqual(`Test\n\tA1        Va2 Val3 Value4  "Value 5" -\n\tAttibute2 𝄞𝄞  𝄞𝄞𝄞𝄞 𝄞𝄞𝄞𝄞𝄞𝄞𝄞\nEnd`);
     });
     test("Without arguments", () => {
         const element = new src_1.SmlElement("Test");
@@ -1208,7 +1215,7 @@ describe("SmlDocument.getBytes + fromBytes", () => {
 });
 describe("SmlDocument.toBase64String + fromBase64String", () => {
     test.each([
-        [reliabletxt_1.ReliableTxtEncoding.Utf8, "Base64|77u/QQpFbmQ=|"],
+        [reliabletxt_1.ReliableTxtEncoding.Utf8, "Base64|77u/QQpFbmQ|"],
         [reliabletxt_1.ReliableTxtEncoding.Utf16, "Base64|/v8AQQAKAEUAbgBk|"],
     ])("Given %p returns %p", (encoding, output) => {
         const document = new src_1.SmlDocument(new src_1.SmlElement("A"));

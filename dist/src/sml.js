@@ -704,7 +704,7 @@ class SmlElement extends SmlNamedNode {
                 }
                 const value = values[curColumnIndex];
                 const serializedValue = wsv_1.WsvValue.serialize(value);
-                maxLength = Math.max(maxLength, serializedValue.length);
+                maxLength = Math.max(maxLength, reliabletxt_1.Utf16String.getCodePointCount(serializedValue));
             }
             for (let i = 0; i < attributes.length; i++) {
                 const values = valuesArray[i];
@@ -713,7 +713,7 @@ class SmlElement extends SmlNamedNode {
                 }
                 const value = valuesArray[i][curColumnIndex];
                 const serializedValue = wsv_1.WsvValue.serialize(value);
-                const lengthDif = maxLength - serializedValue.length;
+                const lengthDif = maxLength - reliabletxt_1.Utf16String.getCodePointCount(serializedValue);
                 const fillingWhitespace = " ".repeat(lengthDif);
                 if (rightAligned !== null && rightAligned[curColumnIndex]) {
                     const last = (_a = whitespacesArray[i][whitespacesArray[i].length - 1]) !== null && _a !== void 0 ? _a : "";

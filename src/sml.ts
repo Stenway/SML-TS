@@ -1,6 +1,6 @@
 ﻿/* (C) Stefan John / Stenway / SimpleML.com / 2023 */
 
-import { Base64String, ReliableTxtDocument, ReliableTxtEncoding, ReliableTxtLines } from "@stenway/reliabletxt"
+import { Base64String, ReliableTxtDocument, ReliableTxtEncoding, ReliableTxtLines, Utf16String } from "@stenway/reliabletxt"
 import { WsvStringUtil, WsvDocument, WsvLine, WsvSerializer, WsvValue } from "@stenway/wsv"
 
 // ----------------------------------------------------------------------
@@ -709,14 +709,14 @@ export class SmlElement extends SmlNamedNode {
 				if (curColumnIndex >= values.length) { continue }
 				const value: string | null = values[curColumnIndex]
 				const serializedValue: string = WsvValue.serialize(value)
-				maxLength = Math.max(maxLength, serializedValue.length)
+				maxLength = Math.max(maxLength, Utf16String.getCodePointCount(serializedValue))
 			}
 			for (let i=0; i<attributes.length; i++) {
 				const values: (string | null)[] = valuesArray[i]
 				if (curColumnIndex >= values.length) { continue }
 				const value: string | null = valuesArray[i][curColumnIndex]
 				const serializedValue: string = WsvValue.serialize(value)
-				const lengthDif: number = maxLength - serializedValue.length
+				const lengthDif: number = maxLength - Utf16String.getCodePointCount(serializedValue)
 				const fillingWhitespace: string = " ".repeat(lengthDif)
 				if (rightAligned !== null && rightAligned[curColumnIndex]) {
 					const last: string | null = whitespacesArray[i][whitespacesArray[i].length-1] ?? ""
