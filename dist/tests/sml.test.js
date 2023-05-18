@@ -1,23 +1,12 @@
-"use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
-Object.defineProperty(exports, "__esModule", { value: true });
 /* eslint-disable no-irregular-whitespace */
-const reliabletxt_1 = require("@stenway/reliabletxt");
-const wsv_1 = require("@stenway/wsv");
-const src_1 = require("../src");
+import { ReliableTxtEncoding } from "@stenway/reliabletxt";
+import { WsvDocument, WsvLine } from "@stenway/wsv";
+import { SmlAttribute, SmlDocument, SmlElement, SmlEmptyNode, SmlNode, SmlParser, SmlParserError, SyncWsvDocumentLineIterator, SyncWsvJaggedArrayLineIterator } from "../src/sml.js";
 describe("SmlNode.isElement + isAttribute + isEmptyNode + isNamedNode", () => {
     test.each([
-        [new src_1.SmlElement("Test"), true, false, false, true, true, false],
-        [new src_1.SmlAttribute("Test", [null]), false, true, false, true, false, true],
-        [new src_1.SmlEmptyNode(), false, false, true, false, false, false],
+        [new SmlElement("Test"), true, false, false, true, true, false],
+        [new SmlAttribute("Test", [null]), false, true, false, true, false, true],
+        [new SmlEmptyNode(), false, false, true, false, false, false],
     ])("Given %p returns %p, %p, %p", (node, output1, output2, output3, output4, output5, output6) => {
         expect(node.isElement()).toEqual(output1);
         expect(node.isAttribute()).toEqual(output2);
@@ -29,9 +18,9 @@ describe("SmlNode.isElement + isAttribute + isEmptyNode + isNamedNode", () => {
 });
 describe("SmlNode.whitespaces + hasWhitespaces", () => {
     test.each([
-        [new src_1.SmlElement("Test")],
-        [new src_1.SmlAttribute("Test", [null])],
-        [new src_1.SmlEmptyNode()],
+        [new SmlElement("Test")],
+        [new SmlAttribute("Test", [null])],
+        [new SmlEmptyNode()],
     ])("Given %p", (node) => {
         expect(node.hasWhitespaces).toEqual(false);
         node.whitespaces = [" ", "\t"];
@@ -48,9 +37,9 @@ describe("SmlNode.whitespaces + hasWhitespaces", () => {
 });
 describe("SmlNode.comment + hasComment", () => {
     test.each([
-        [new src_1.SmlElement("Test")],
-        [new src_1.SmlAttribute("Test", [null])],
-        [new src_1.SmlEmptyNode()],
+        [new SmlElement("Test")],
+        [new SmlAttribute("Test", [null])],
+        [new SmlEmptyNode()],
     ])("Given %p", (node) => {
         expect(node.hasComment).toEqual(false);
         node.comment = "Test";
@@ -64,9 +53,9 @@ describe("SmlNode.comment + hasComment", () => {
 });
 describe("SmlNode.minify", () => {
     test.each([
-        [new src_1.SmlElement("Test")],
-        [new src_1.SmlAttribute("Test", [null])],
-        [new src_1.SmlEmptyNode()],
+        [new SmlElement("Test")],
+        [new SmlAttribute("Test", [null])],
+        [new SmlEmptyNode()],
     ])("Given %p", (node) => {
         node.whitespaces = [];
         node.comment = "Test";
@@ -79,11 +68,11 @@ describe("SmlNode.minify", () => {
 });
 describe("SmlNode.internalSetWhitespacesAndComment", () => {
     test.each([
-        [new src_1.SmlElement("Test")],
-        [new src_1.SmlAttribute("Test", [null])],
-        [new src_1.SmlEmptyNode()],
+        [new SmlElement("Test")],
+        [new SmlAttribute("Test", [null])],
+        [new SmlEmptyNode()],
     ])("Given %p", (node) => {
-        src_1.SmlNode.internalSetWhitespacesAndComment(node, ["a"], "\n");
+        SmlNode.internalSetWhitespacesAndComment(node, ["a"], "\n");
         expect(node.whitespaces).toEqual(["a"]);
         expect(node.comment).toEqual("\n");
     });
@@ -110,7 +99,7 @@ describe("SmlEmptyNode Constructor", () => {
         [["  "], "c", "  #c"],
         [["  ", "  "], "c", "  #c"],
     ])("Given %p and %p returns %p", (input1, input2, output) => {
-        const node = new src_1.SmlEmptyNode(input1, input2);
+        const node = new SmlEmptyNode(input1, input2);
         expect(node.whitespaces).toEqual(input1);
         expect(node.comment).toEqual(input2);
         expect(node.toString()).toEqual(output);
@@ -119,8 +108,8 @@ describe("SmlEmptyNode Constructor", () => {
 // ----------------------------------------------------------------------
 describe("SmlNamedNode.hasName", () => {
     test.each([
-        [new src_1.SmlElement("Test")],
-        [new src_1.SmlAttribute("Test", [null])],
+        [new SmlElement("Test")],
+        [new SmlAttribute("Test", [null])],
     ])("Given %p", (node) => {
         expect(node.hasName("Test")).toEqual(true);
         expect(node.hasName("test")).toEqual(true);
@@ -139,13 +128,13 @@ describe("SmlAttribute Constructor", () => {
         ["Test", ["Value1", "Value2"], "Test Value1 Value2"],
         ["Test", ["Value1", null], "Test Value1 -"],
     ])("Given %p and %p returns %p", (input1, input2, output) => {
-        const attribute = new src_1.SmlAttribute(input1, input2);
+        const attribute = new SmlAttribute(input1, input2);
         expect(attribute.name).toEqual(input1);
         expect(attribute.values).toEqual(input2);
         expect(attribute.toString()).toEqual(output);
     });
     test("Throws", () => {
-        expect(() => new src_1.SmlAttribute("Test", [])).toThrow();
+        expect(() => new SmlAttribute("Test", [])).toThrow();
     });
 });
 describe("SmlAttribute.values + valueCount", () => {
@@ -155,7 +144,7 @@ describe("SmlAttribute.values + valueCount", () => {
         [["Value1", "Value2"], 2],
         [["Value1", null], 2],
     ])("Given %p returns %p", (input, output) => {
-        const attribute = new src_1.SmlAttribute("Test", [null]);
+        const attribute = new SmlAttribute("Test", [null]);
         attribute.values = input;
         expect(attribute.values).toEqual(input);
         expect(attribute.valueCount).toEqual(output);
@@ -164,26 +153,26 @@ describe("SmlAttribute.values + valueCount", () => {
         expect(attribute.values).toEqual(input);
     });
     test("Throws", () => {
-        const attribute = new src_1.SmlAttribute("Test", [null]);
+        const attribute = new SmlAttribute("Test", [null]);
         expect(() => attribute.values = []).toThrow();
     });
 });
 describe("SmlAttribute.assureName", () => {
     test("Assured", () => {
-        const attribute = new src_1.SmlAttribute("Test", [null]);
+        const attribute = new SmlAttribute("Test", [null]);
         expect(attribute.assureName("Test")).toEqual(attribute);
     });
     test("Throws", () => {
-        expect(() => new src_1.SmlAttribute("Test", [null]).assureName("Test2")).toThrow();
+        expect(() => new SmlAttribute("Test", [null]).assureName("Test2")).toThrow();
     });
 });
 describe("SmlAttribute.assureValueCount", () => {
     test("Assured", () => {
-        const attribute = new src_1.SmlAttribute("Test", [null]);
+        const attribute = new SmlAttribute("Test", [null]);
         expect(attribute.assureValueCount(1)).toEqual(attribute);
     });
     test("Throws", () => {
-        expect(() => new src_1.SmlAttribute("Test", [null]).assureValueCount(2)).toThrow();
+        expect(() => new SmlAttribute("Test", [null]).assureValueCount(2)).toThrow();
     });
 });
 describe("SmlAttribute.assureValueCountMinMax", () => {
@@ -201,7 +190,7 @@ describe("SmlAttribute.assureValueCountMinMax", () => {
         [["Value1", "Value2"], 1, 2],
         [["Value1", "Value2"], 2, 3],
     ])("Given %p, %p and %p", (input1, input2, input3) => {
-        new src_1.SmlAttribute("Test", input1).assureValueCountMinMax(input2, input3);
+        new SmlAttribute("Test", input1).assureValueCountMinMax(input2, input3);
     });
     test.each([
         [[null], 0, null],
@@ -210,10 +199,10 @@ describe("SmlAttribute.assureValueCountMinMax", () => {
         [[null], 2, 2],
         [["Value1", "Value2"], null, 1],
     ])("Given %p, %p and %p throws", (input1, input2, input3) => {
-        expect(() => new src_1.SmlAttribute("Test", input1).assureValueCountMinMax(input2, input3)).toThrow();
+        expect(() => new SmlAttribute("Test", input1).assureValueCountMinMax(input2, input3)).toThrow();
     });
     test("Only min", () => {
-        new src_1.SmlAttribute("Test", [null]).assureValueCountMinMax(1);
+        new SmlAttribute("Test", [null]).assureValueCountMinMax(1);
     });
 });
 describe("SmlAttribute.getNullableString", () => {
@@ -222,16 +211,16 @@ describe("SmlAttribute.getNullableString", () => {
         [["Value1"], 0, "Value1"],
         [["Value1", "Value2"], 1, "Value2"],
     ])("Given %p and %p returns %p", (input1, input2, output) => {
-        expect(new src_1.SmlAttribute("Test", input1).getNullableString(input2)).toEqual(output);
+        expect(new SmlAttribute("Test", input1).getNullableString(input2)).toEqual(output);
     });
     test("No index", () => {
-        expect(new src_1.SmlAttribute("Test", ["Value1", "Value2"]).getNullableString()).toEqual("Value1");
+        expect(new SmlAttribute("Test", ["Value1", "Value2"]).getNullableString()).toEqual("Value1");
     });
     test.each([
         [[null], 1],
         [[null], -1],
     ])("Given %p and %p throws", (input1, input2) => {
-        expect(() => new src_1.SmlAttribute("Test", input1).getNullableString(input2)).toThrow();
+        expect(() => new SmlAttribute("Test", input1).getNullableString(input2)).toThrow();
     });
 });
 describe("SmlAttribute.getString", () => {
@@ -239,17 +228,17 @@ describe("SmlAttribute.getString", () => {
         [["Value1"], 0, "Value1"],
         [["Value1", "Value2"], 1, "Value2"],
     ])("Given %p and %p returns %p", (input1, input2, output) => {
-        expect(new src_1.SmlAttribute("Test", input1).getString(input2)).toEqual(output);
+        expect(new SmlAttribute("Test", input1).getString(input2)).toEqual(output);
     });
     test("No index", () => {
-        expect(new src_1.SmlAttribute("Test", ["Value1", "Value2"]).getString()).toEqual("Value1");
+        expect(new SmlAttribute("Test", ["Value1", "Value2"]).getString()).toEqual("Value1");
     });
     test.each([
         [[null], 1],
         [[null], -1],
         [[null], 0],
     ])("Given %p and %p throws", (input1, input2) => {
-        expect(() => new src_1.SmlAttribute("Test", input1).getString(input2)).toThrow();
+        expect(() => new SmlAttribute("Test", input1).getString(input2)).toThrow();
     });
 });
 describe("SmlAttribute.getNullableStringArray", () => {
@@ -261,21 +250,21 @@ describe("SmlAttribute.getNullableStringArray", () => {
         [[null, "Value2"], 0, [null, "Value2"]],
         [[null, "Value2"], 1, ["Value2"]],
     ])("Given %p and %p returns %p", (input1, input2, output) => {
-        const attribute = new src_1.SmlAttribute("Test", input1);
+        const attribute = new SmlAttribute("Test", input1);
         const array = attribute.getNullableStringArray(input2);
         expect(array).toEqual(output);
         array[0] = "Test";
         expect(attribute.values).toEqual(input1);
     });
     test("No index", () => {
-        expect(new src_1.SmlAttribute("Test", ["Value1", null]).getNullableStringArray()).toEqual(["Value1", null]);
+        expect(new SmlAttribute("Test", ["Value1", null]).getNullableStringArray()).toEqual(["Value1", null]);
     });
     test.each([
         [[null], 2],
         [[null], -1],
         [["Value1", "Value2"], 2],
     ])("Given %p and %p throws", (input1, input2) => {
-        expect(() => new src_1.SmlAttribute("Test", input1).getNullableStringArray(input2)).toThrow();
+        expect(() => new SmlAttribute("Test", input1).getNullableStringArray(input2)).toThrow();
     });
 });
 describe("SmlAttribute.getStringArray", () => {
@@ -284,14 +273,14 @@ describe("SmlAttribute.getStringArray", () => {
         [["Value1", "Value2"], 0, ["Value1", "Value2"]],
         [["Value1", "Value2"], 1, ["Value2"]],
     ])("Given %p and %p returns %p", (input1, input2, output) => {
-        const attribute = new src_1.SmlAttribute("Test", input1);
+        const attribute = new SmlAttribute("Test", input1);
         const array = attribute.getStringArray(input2);
         expect(array).toEqual(output);
         array[0] = "Test";
         expect(attribute.values).toEqual(input1);
     });
     test("No index", () => {
-        expect(new src_1.SmlAttribute("Test", ["Value1", "Value2"]).getStringArray()).toEqual(["Value1", "Value2"]);
+        expect(new SmlAttribute("Test", ["Value1", "Value2"]).getStringArray()).toEqual(["Value1", "Value2"]);
     });
     test.each([
         [["Value1"], 2],
@@ -299,7 +288,7 @@ describe("SmlAttribute.getStringArray", () => {
         [[null], 0],
         [["Value1", "Value2"], 2],
     ])("Given %p and %p throws", (input1, input2) => {
-        expect(() => new src_1.SmlAttribute("Test", input1).getStringArray(input2)).toThrow();
+        expect(() => new SmlAttribute("Test", input1).getStringArray(input2)).toThrow();
     });
 });
 describe("SmlAttribute.getBool", () => {
@@ -311,16 +300,16 @@ describe("SmlAttribute.getBool", () => {
         [["false"], 0, false],
         [["FALSE"], 0, false],
     ])("Given %p and %p returns %p", (input1, input2, output) => {
-        expect(new src_1.SmlAttribute("Test", input1).getBool(input2)).toEqual(output);
+        expect(new SmlAttribute("Test", input1).getBool(input2)).toEqual(output);
     });
     test("No index", () => {
-        expect(new src_1.SmlAttribute("Test", ["true", "Value2"]).getBool()).toEqual(true);
+        expect(new SmlAttribute("Test", ["true", "Value2"]).getBool()).toEqual(true);
     });
     test.each([
         [[null], 0],
         [["Test"], 0],
     ])("Given %p and %p throws", (input1, input2) => {
-        expect(() => new src_1.SmlAttribute("Test", input1).getBool(input2)).toThrow();
+        expect(() => new SmlAttribute("Test", input1).getBool(input2)).toThrow();
     });
 });
 describe("SmlAttribute.getInt", () => {
@@ -333,17 +322,17 @@ describe("SmlAttribute.getInt", () => {
         [["10", "Value2"], 0, 10],
         [["Value1", "10"], 1, 10],
     ])("Given %p and %p returns %p", (input1, input2, output) => {
-        expect(new src_1.SmlAttribute("Test", input1).getInt(input2)).toEqual(output);
+        expect(new SmlAttribute("Test", input1).getInt(input2)).toEqual(output);
     });
     test("No index", () => {
-        expect(new src_1.SmlAttribute("Test", ["10", "Value2"]).getInt()).toEqual(10);
+        expect(new SmlAttribute("Test", ["10", "Value2"]).getInt()).toEqual(10);
     });
     test.each([
         [[null], 0],
         [["Test"], 0],
         [["10.1"], 0],
     ])("Given %p and %p throws", (input1, input2) => {
-        expect(() => new src_1.SmlAttribute("Test", input1).getInt(input2)).toThrow();
+        expect(() => new SmlAttribute("Test", input1).getInt(input2)).toThrow();
     });
 });
 describe("SmlAttribute.getFloat", () => {
@@ -363,10 +352,10 @@ describe("SmlAttribute.getFloat", () => {
         [["10", "Value2"], 0, 10],
         [["Value1", "10"], 1, 10],
     ])("Given %p and %p returns %p", (input1, input2, output) => {
-        expect(new src_1.SmlAttribute("Test", input1).getFloat(input2)).toEqual(output);
+        expect(new SmlAttribute("Test", input1).getFloat(input2)).toEqual(output);
     });
     test("No index", () => {
-        expect(new src_1.SmlAttribute("Test", ["10.0", "Value2"]).getFloat()).toEqual(10);
+        expect(new SmlAttribute("Test", ["10.0", "Value2"]).getFloat()).toEqual(10);
     });
     test.each([
         [[null], 0],
@@ -375,7 +364,7 @@ describe("SmlAttribute.getFloat", () => {
         [["10.1."], 0],
         [[".1"], 0],
     ])("Given %p and %p throws", (input1, input2) => {
-        expect(() => new src_1.SmlAttribute("Test", input1).getFloat(input2)).toThrow();
+        expect(() => new SmlAttribute("Test", input1).getFloat(input2)).toThrow();
     });
 });
 describe("SmlAttribute.getEnum", () => {
@@ -386,16 +375,16 @@ describe("SmlAttribute.getEnum", () => {
         [["VALUE1", "Value2"], 0, 0],
         [["Value1", "VALUE2"], 1, 1],
     ])("Given %p and %p returns %p", (input1, input2, output) => {
-        expect(new src_1.SmlAttribute("Test", input1).getEnum(["Value1", "Value2"], input2)).toEqual(output);
+        expect(new SmlAttribute("Test", input1).getEnum(["Value1", "Value2"], input2)).toEqual(output);
     });
     test("No index", () => {
-        expect(new src_1.SmlAttribute("Test", ["Value1", "Value2"]).getEnum(["Value1", "Value2"])).toEqual(0);
+        expect(new SmlAttribute("Test", ["Value1", "Value2"]).getEnum(["Value1", "Value2"])).toEqual(0);
     });
     test.each([
         [[null], 0],
         [["Test"], 0],
     ])("Given %p and %p throws", (input1, input2) => {
-        expect(() => new src_1.SmlAttribute("Test", input1).getEnum(["Value1", "Value2"], input2)).toThrow();
+        expect(() => new SmlAttribute("Test", input1).getEnum(["Value1", "Value2"], input2)).toThrow();
     });
 });
 describe("SmlAttribute.getBytes", () => {
@@ -403,16 +392,16 @@ describe("SmlAttribute.getBytes", () => {
         [["Base64||"], 0, []],
         [["Base64|TWFuTQ|"], 0, [0x4d, 0x61, 0x6e, 0x4d]],
     ])("Given %p and %p returns %p", (input1, input2, output) => {
-        expect(new src_1.SmlAttribute("Test", input1).getBytes(input2)).toEqual(new Uint8Array(output));
+        expect(new SmlAttribute("Test", input1).getBytes(input2)).toEqual(new Uint8Array(output));
     });
     test("No index", () => {
-        expect(new src_1.SmlAttribute("Test", ["Base64||"]).getBytes()).toEqual(new Uint8Array([]));
+        expect(new SmlAttribute("Test", ["Base64||"]).getBytes()).toEqual(new Uint8Array([]));
     });
     test.each([
         [[null]],
         [["Test"]],
     ])("Given %p and %p throws", (input1) => {
-        expect(() => new src_1.SmlAttribute("Test", input1).getBytes()).toThrow();
+        expect(() => new SmlAttribute("Test", input1).getBytes()).toThrow();
     });
 });
 describe("SmlAttribute.asNullableString", () => {
@@ -420,25 +409,25 @@ describe("SmlAttribute.asNullableString", () => {
         [["Value1"], "Value1"],
         [[null], null],
     ])("Given %p returns %p", (input, output) => {
-        expect(new src_1.SmlAttribute("Test", input).asNullableString()).toEqual(output);
+        expect(new SmlAttribute("Test", input).asNullableString()).toEqual(output);
     });
     test.each([
         [["Value1", "Value2"]],
     ])("Given %p throws", (input) => {
-        expect(() => new src_1.SmlAttribute("Test", input).asNullableString()).toThrow();
+        expect(() => new SmlAttribute("Test", input).asNullableString()).toThrow();
     });
 });
 describe("SmlAttribute.asString", () => {
     test.each([
         [["Value1"], "Value1"],
     ])("Given %p returns %p", (input, output) => {
-        expect(new src_1.SmlAttribute("Test", input).asString()).toEqual(output);
+        expect(new SmlAttribute("Test", input).asString()).toEqual(output);
     });
     test.each([
         [[null]],
         [["Value1", "Value2"]],
     ])("Given %p throws", (input) => {
-        expect(() => new src_1.SmlAttribute("Test", input).asString()).toThrow();
+        expect(() => new SmlAttribute("Test", input).asString()).toThrow();
     });
 });
 describe("SmlAttribute.asNullableStringArray", () => {
@@ -453,15 +442,15 @@ describe("SmlAttribute.asNullableStringArray", () => {
         [[null], 1, 1],
         [["Value1", "Value2"], 2, 2],
     ])("Given %p, %p and %p", (input1, input2, input3) => {
-        expect(new src_1.SmlAttribute("Test", input1).asNullableStringArray(input2, input3)).toEqual(input1);
+        expect(new SmlAttribute("Test", input1).asNullableStringArray(input2, input3)).toEqual(input1);
     });
     test("No arguments", () => {
-        expect(new src_1.SmlAttribute("Test", ["Value1", "Value2"]).asNullableStringArray()).toEqual(["Value1", "Value2"]);
+        expect(new SmlAttribute("Test", ["Value1", "Value2"]).asNullableStringArray()).toEqual(["Value1", "Value2"]);
     });
     test.each([
         [["Value1", "Value2"], 3, 3],
     ])("Given %p throws", (input1, input2, input3) => {
-        expect(() => new src_1.SmlAttribute("Test", input1).asNullableStringArray(input2, input3)).toThrow();
+        expect(() => new SmlAttribute("Test", input1).asNullableStringArray(input2, input3)).toThrow();
     });
 });
 describe("SmlAttribute.asStringArray", () => {
@@ -473,10 +462,10 @@ describe("SmlAttribute.asStringArray", () => {
         [["Value1"], 1, 1],
         [["Value1", "Value2"], 2, 2],
     ])("Given %p, %p and %p", (input1, input2, input3) => {
-        expect(new src_1.SmlAttribute("Test", input1).asStringArray(input2, input3)).toEqual(input1);
+        expect(new SmlAttribute("Test", input1).asStringArray(input2, input3)).toEqual(input1);
     });
     test("No arguments", () => {
-        expect(new src_1.SmlAttribute("Test", ["Value1", "Value2"]).asStringArray()).toEqual(["Value1", "Value2"]);
+        expect(new SmlAttribute("Test", ["Value1", "Value2"]).asStringArray()).toEqual(["Value1", "Value2"]);
     });
     test.each([
         [[null], null, null],
@@ -484,7 +473,7 @@ describe("SmlAttribute.asStringArray", () => {
         [[null], 1, 1],
         [["Value1", "Value2"], 3, 3],
     ])("Given %p throws", (input1, input2, input3) => {
-        expect(() => new src_1.SmlAttribute("Test", input1).asStringArray(input2, input3)).toThrow();
+        expect(() => new SmlAttribute("Test", input1).asStringArray(input2, input3)).toThrow();
     });
 });
 describe("SmlAttribute.asBool", () => {
@@ -492,7 +481,7 @@ describe("SmlAttribute.asBool", () => {
         [["True"], true],
         [["false"], false],
     ])("Given %p returns %p", (input, output) => {
-        expect(new src_1.SmlAttribute("Test", input).asBool()).toEqual(output);
+        expect(new SmlAttribute("Test", input).asBool()).toEqual(output);
     });
     test.each([
         [[null]],
@@ -500,7 +489,7 @@ describe("SmlAttribute.asBool", () => {
         [["0"]],
         [["Value1", "Value2"]],
     ])("Given %p throws", (input) => {
-        expect(() => new src_1.SmlAttribute("Test", input).asBool()).toThrow();
+        expect(() => new SmlAttribute("Test", input).asBool()).toThrow();
     });
 });
 describe("SmlAttribute.asInt", () => {
@@ -510,7 +499,7 @@ describe("SmlAttribute.asInt", () => {
         [["+10"], 10],
         [["-10"], -10],
     ])("Given %p returns %p", (input, output) => {
-        expect(new src_1.SmlAttribute("Test", input).asInt()).toEqual(output);
+        expect(new SmlAttribute("Test", input).asInt()).toEqual(output);
     });
     test.each([
         [[null]],
@@ -519,7 +508,7 @@ describe("SmlAttribute.asInt", () => {
         [["false"]],
         [["Value1", "Value2"]],
     ])("Given %p throws", (input) => {
-        expect(() => new src_1.SmlAttribute("Test", input).asInt()).toThrow();
+        expect(() => new SmlAttribute("Test", input).asInt()).toThrow();
     });
 });
 describe("SmlAttribute.asFloat", () => {
@@ -531,7 +520,7 @@ describe("SmlAttribute.asFloat", () => {
         [["1.2"], 1.2],
         [["-1.2e-2"], -0.012],
     ])("Given %p returns %p", (input, output) => {
-        expect(new src_1.SmlAttribute("Test", input).asFloat()).toEqual(output);
+        expect(new SmlAttribute("Test", input).asFloat()).toEqual(output);
     });
     test.each([
         [[null]],
@@ -539,7 +528,7 @@ describe("SmlAttribute.asFloat", () => {
         [["false"]],
         [["Value1", "Value2"]],
     ])("Given %p throws", (input) => {
-        expect(() => new src_1.SmlAttribute("Test", input).asFloat()).toThrow();
+        expect(() => new SmlAttribute("Test", input).asFloat()).toThrow();
     });
 });
 describe("SmlAttribute.asEnum", () => {
@@ -547,14 +536,14 @@ describe("SmlAttribute.asEnum", () => {
         [["Value1"], 0],
         [["Value2"], 1],
     ])("Given %p returns %p", (input, output) => {
-        expect(new src_1.SmlAttribute("Test", input).asEnum(["Value1", "Value2"])).toEqual(output);
+        expect(new SmlAttribute("Test", input).asEnum(["Value1", "Value2"])).toEqual(output);
     });
     test.each([
         [[null]],
         [["true"]],
         [["Value1", "Value2"]],
     ])("Given %p throws", (input) => {
-        expect(() => new src_1.SmlAttribute("Test", input).asEnum(["Value1", "Value2"])).toThrow();
+        expect(() => new SmlAttribute("Test", input).asEnum(["Value1", "Value2"])).toThrow();
     });
 });
 describe("SmlAttribute.asBytes", () => {
@@ -562,14 +551,14 @@ describe("SmlAttribute.asBytes", () => {
         [["Base64||"], []],
         [["Base64|TWFuTQ|"], [0x4d, 0x61, 0x6e, 0x4d]],
     ])("Given %p returns %p", (input, output) => {
-        expect(new src_1.SmlAttribute("Test", input).asBytes()).toEqual(new Uint8Array(output));
+        expect(new SmlAttribute("Test", input).asBytes()).toEqual(new Uint8Array(output));
     });
     test.each([
         [[null]],
         [["Test"]],
         [["Value1", "Value2"]],
     ])("Given %p throws", (input) => {
-        expect(() => new src_1.SmlAttribute("Test", input).asBytes()).toThrow();
+        expect(() => new SmlAttribute("Test", input).asBytes()).toThrow();
     });
 });
 describe("SmlAttribute.asIntArray", () => {
@@ -581,10 +570,10 @@ describe("SmlAttribute.asIntArray", () => {
         [["10"], 1, 1, [10]],
         [["10", "20"], 2, 2, [10, 20]],
     ])("Given %p, %p and %p returns %p", (input1, input2, input3, output) => {
-        expect(new src_1.SmlAttribute("Test", input1).asIntArray(input2, input3)).toEqual(output);
+        expect(new SmlAttribute("Test", input1).asIntArray(input2, input3)).toEqual(output);
     });
     test("No arguments", () => {
-        expect(new src_1.SmlAttribute("Test", ["10", "20"]).asIntArray()).toEqual([10, 20]);
+        expect(new SmlAttribute("Test", ["10", "20"]).asIntArray()).toEqual([10, 20]);
     });
     test.each([
         [[null], null, null],
@@ -594,7 +583,7 @@ describe("SmlAttribute.asIntArray", () => {
         [[null], 1, 1],
         [["10", "20"], 3, 3],
     ])("Given %p throws", (input1, input2, input3) => {
-        expect(() => new src_1.SmlAttribute("Test", input1).asIntArray(input2, input3)).toThrow();
+        expect(() => new SmlAttribute("Test", input1).asIntArray(input2, input3)).toThrow();
     });
 });
 describe("SmlAttribute.asFloatArray", () => {
@@ -606,10 +595,10 @@ describe("SmlAttribute.asFloatArray", () => {
         [["10"], 1, 1, [10]],
         [["10", "20.0"], 2, 2, [10, 20]],
     ])("Given %p, %p and %p returns %p", (input1, input2, input3, output) => {
-        expect(new src_1.SmlAttribute("Test", input1).asFloatArray(input2, input3)).toEqual(output);
+        expect(new SmlAttribute("Test", input1).asFloatArray(input2, input3)).toEqual(output);
     });
     test("No arguments", () => {
-        expect(new src_1.SmlAttribute("Test", ["10", "20.0"]).asFloatArray()).toEqual([10, 20]);
+        expect(new SmlAttribute("Test", ["10", "20.0"]).asFloatArray()).toEqual([10, 20]);
     });
     test.each([
         [[null], null, null],
@@ -618,7 +607,7 @@ describe("SmlAttribute.asFloatArray", () => {
         [[null], 1, 1],
         [["10", "20"], 3, 3],
     ])("Given %p throws", (input1, input2, input3) => {
-        expect(() => new src_1.SmlAttribute("Test", input1).asFloatArray(input2, input3)).toThrow();
+        expect(() => new SmlAttribute("Test", input1).asFloatArray(input2, input3)).toThrow();
     });
 });
 describe("SmlAttribute.isNullValue", () => {
@@ -629,7 +618,7 @@ describe("SmlAttribute.isNullValue", () => {
         [[null, "Value2"], false],
         [["Value1", null], false],
     ])("Given %p returns %p", (input, output) => {
-        expect(new src_1.SmlAttribute("Test", input).isNullValue()).toEqual(output);
+        expect(new SmlAttribute("Test", input).isNullValue()).toEqual(output);
     });
 });
 describe("SmlAttribute.setNullableString", () => {
@@ -638,12 +627,12 @@ describe("SmlAttribute.setNullableString", () => {
         [""],
         ["Value"],
     ])("Given %p", (input) => {
-        expect(new src_1.SmlAttribute("Test").setNullableString(input).values).toEqual([input]);
-        expect(new src_1.SmlAttribute("Test").setNullableString(input, 0).values).toEqual([input]);
-        expect(new src_1.SmlAttribute("Test", [null, null]).setNullableString(input, 1).values).toEqual([null, input]);
+        expect(new SmlAttribute("Test").setNullableString(input).values).toEqual([input]);
+        expect(new SmlAttribute("Test").setNullableString(input, 0).values).toEqual([input]);
+        expect(new SmlAttribute("Test", [null, null]).setNullableString(input, 1).values).toEqual([null, input]);
     });
     test("Throws", () => {
-        expect(() => new src_1.SmlAttribute("Test").setNullableString("Value", 1)).toThrowError();
+        expect(() => new SmlAttribute("Test").setNullableString("Value", 1)).toThrowError();
     });
 });
 describe("SmlAttribute.setString", () => {
@@ -651,7 +640,7 @@ describe("SmlAttribute.setString", () => {
         [""],
         ["Value"],
     ])("Given %p", (input) => {
-        expect(new src_1.SmlAttribute("Test").setString(input).values).toEqual([input]);
+        expect(new SmlAttribute("Test").setString(input).values).toEqual([input]);
     });
 });
 describe("SmlAttribute.setBool", () => {
@@ -659,7 +648,7 @@ describe("SmlAttribute.setBool", () => {
         [true, "true"],
         [false, "false"],
     ])("Given %p returns %p", (input, output) => {
-        expect(new src_1.SmlAttribute("Test").setBool(input).values).toEqual([output]);
+        expect(new SmlAttribute("Test").setBool(input).values).toEqual([output]);
     });
 });
 describe("SmlAttribute.setInt", () => {
@@ -670,7 +659,7 @@ describe("SmlAttribute.setInt", () => {
         [-0.0, "0"],
         [12345, "12345"],
     ])("Given %p returns %p", (input, output) => {
-        expect(new src_1.SmlAttribute("Test").setInt(input).values).toEqual([output]);
+        expect(new SmlAttribute("Test").setInt(input).values).toEqual([output]);
     });
     test.each([
         [0.1],
@@ -678,7 +667,7 @@ describe("SmlAttribute.setInt", () => {
         [+Infinity],
         [-Infinity],
     ])("Given %p throws", (input) => {
-        expect(() => new src_1.SmlAttribute("Test").setInt(input)).toThrowError();
+        expect(() => new SmlAttribute("Test").setInt(input)).toThrowError();
     });
 });
 describe("SmlAttribute.setFloat", () => {
@@ -691,14 +680,14 @@ describe("SmlAttribute.setFloat", () => {
         [1.234, "1.234"],
         [-123.4, "-123.4"],
     ])("Given %p returns %p", (input, output) => {
-        expect(new src_1.SmlAttribute("Test").setFloat(input).values).toEqual([output]);
+        expect(new SmlAttribute("Test").setFloat(input).values).toEqual([output]);
     });
     test.each([
         [NaN],
         [+Infinity],
         [-Infinity],
     ])("Given %p throws", (input) => {
-        expect(() => new src_1.SmlAttribute("Test").setFloat(input)).toThrowError();
+        expect(() => new SmlAttribute("Test").setFloat(input)).toThrowError();
     });
 });
 describe("SmlAttribute.setEnum", () => {
@@ -706,13 +695,13 @@ describe("SmlAttribute.setEnum", () => {
         [0, "Value1"],
         [1, "Value2"],
     ])("Given %p returns %p", (input, output) => {
-        expect(new src_1.SmlAttribute("Test").setEnum(input, ["Value1", "Value2"]).values).toEqual([output]);
+        expect(new SmlAttribute("Test").setEnum(input, ["Value1", "Value2"]).values).toEqual([output]);
     });
     test.each([
         [-1],
         [2],
     ])("Given %p throws", (input) => {
-        expect(() => new src_1.SmlAttribute("Test").setEnum(input, ["Value1", "Value2"])).toThrowError();
+        expect(() => new SmlAttribute("Test").setEnum(input, ["Value1", "Value2"])).toThrowError();
     });
 });
 describe("SmlAttribute.setBytes", () => {
@@ -720,7 +709,7 @@ describe("SmlAttribute.setBytes", () => {
         [[], "Base64||"],
         [[0x4d, 0x61, 0x6e, 0x4d], "Base64|TWFuTQ|"],
     ])("Given %p returns %p", (input, output) => {
-        expect(new src_1.SmlAttribute("Test").setBytes(new Uint8Array(input)).values).toEqual([output]);
+        expect(new SmlAttribute("Test").setBytes(new Uint8Array(input)).values).toEqual([output]);
     });
 });
 describe("SmlAttribute.setIntArray", () => {
@@ -728,7 +717,7 @@ describe("SmlAttribute.setIntArray", () => {
         [[0], ["0"]],
         [[0, 1], ["0", "1"]],
     ])("Given %p returns %p", (input, output) => {
-        expect(new src_1.SmlAttribute("Test").setIntArray(input).values).toEqual(output);
+        expect(new SmlAttribute("Test").setIntArray(input).values).toEqual(output);
     });
     test.each([
         [[]],
@@ -737,7 +726,7 @@ describe("SmlAttribute.setIntArray", () => {
         [[+Infinity]],
         [[-Infinity]],
     ])("Given %p throws", (input) => {
-        expect(() => new src_1.SmlAttribute("Test").setIntArray(input)).toThrowError();
+        expect(() => new SmlAttribute("Test").setIntArray(input)).toThrowError();
     });
 });
 describe("SmlAttribute.setFloatArray", () => {
@@ -745,7 +734,7 @@ describe("SmlAttribute.setFloatArray", () => {
         [[0], ["0"]],
         [[0, 1.23], ["0", "1.23"]],
     ])("Given %p returns %p", (input, output) => {
-        expect(new src_1.SmlAttribute("Test").setFloatArray(input).values).toEqual(output);
+        expect(new SmlAttribute("Test").setFloatArray(input).values).toEqual(output);
     });
     test.each([
         [[]],
@@ -753,19 +742,19 @@ describe("SmlAttribute.setFloatArray", () => {
         [[+Infinity]],
         [[-Infinity]],
     ])("Given %p throws", (input) => {
-        expect(() => new src_1.SmlAttribute("Test").setFloatArray(input)).toThrowError();
+        expect(() => new SmlAttribute("Test").setFloatArray(input)).toThrowError();
     });
 });
 test("SmlAttribute.setNull", () => {
-    expect(new src_1.SmlAttribute("Test", ["Value"]).setNull().values).toEqual([null]);
-    expect(new src_1.SmlAttribute("Test", ["Value1", "Value2", "Value3"]).setNull(1).values).toEqual(["Value1", null, "Value3"]);
+    expect(new SmlAttribute("Test", ["Value"]).setNull().values).toEqual([null]);
+    expect(new SmlAttribute("Test", ["Value1", "Value2", "Value3"]).setNull(1).values).toEqual(["Value1", null, "Value3"]);
 });
 describe("SmlAttribute.parse", () => {
     test.each([
         ["Attribute1 -"],
         ["  Attribute2  10 12  #comment"],
     ])("Given %p", (input) => {
-        expect(src_1.SmlAttribute.parse(input).toString()).toEqual(input);
+        expect(SmlAttribute.parse(input).toString()).toEqual(input);
     });
     test.each([
         ["Attribute1"],
@@ -773,12 +762,12 @@ describe("SmlAttribute.parse", () => {
         ["  "],
         ["  -  10 12  #comment"],
     ])("Given %p throws", (input) => {
-        expect(() => src_1.SmlAttribute.parse(input)).toThrowError();
+        expect(() => SmlAttribute.parse(input)).toThrowError();
     });
 });
 // ----------------------------------------------------------------------
 test("SmlElement.endWhitespaces + hasEndWhitespaces", () => {
-    const element = new src_1.SmlElement("Test");
+    const element = new SmlElement("Test");
     expect(element.hasEndWhitespaces).toEqual(false);
     expect(element.toString()).toEqual("Test\nEnd");
     element.endWhitespaces = [" ", "\t"];
@@ -797,7 +786,7 @@ test("SmlElement.endWhitespaces + hasEndWhitespaces", () => {
     expect(element.hasEndWhitespaces).toEqual(false);
 });
 test("SmlElement.endComment + hasEndComment", () => {
-    const element = new src_1.SmlElement("Test");
+    const element = new SmlElement("Test");
     expect(element.hasEndComment).toEqual(false);
     expect(element.toString()).toEqual("Test\nEnd");
     element.endComment = "c";
@@ -813,19 +802,19 @@ test("SmlElement.endComment + hasEndComment", () => {
 });
 describe("SmlElement.addNode", () => {
     test.each([
-        [new src_1.SmlElement("Sub"), "Test\n\tSub\n\tEnd\nEnd"],
-        [new src_1.SmlAttribute("Sub", [null]), "Test\n\tSub -\nEnd"],
-        [new src_1.SmlEmptyNode(), "Test\n\t\nEnd"],
-        [new src_1.SmlEmptyNode(null, "c"), "Test\n\t#c\nEnd"],
+        [new SmlElement("Sub"), "Test\n\tSub\n\tEnd\nEnd"],
+        [new SmlAttribute("Sub", [null]), "Test\n\tSub -\nEnd"],
+        [new SmlEmptyNode(), "Test\n\t\nEnd"],
+        [new SmlEmptyNode(null, "c"), "Test\n\t#c\nEnd"],
     ])("Given %p returns %p", (input, output) => {
-        const element = new src_1.SmlElement("Test");
+        const element = new SmlElement("Test");
         element.addNode(input);
         expect(element.toString()).toEqual(output);
         expect(element.nodes[0]).toEqual(input);
     });
 });
 test("SmlElement.addAttribute + addElement + addEmptyNode", () => {
-    const element = new src_1.SmlElement("Test");
+    const element = new SmlElement("Test");
     const sub1 = element.addAttribute("Sub");
     const sub2 = element.addAttribute("Sub", [null]);
     const sub3 = element.addElement("Sub");
@@ -836,7 +825,7 @@ test("SmlElement.addAttribute + addElement + addEmptyNode", () => {
     expect(element.nodes).toEqual([sub1, sub2, sub3, sub4, sub5, sub6]);
 });
 test("SmlElement.hasNamedNodes + namedNodes + ...", () => {
-    const emptyElement = new src_1.SmlElement("Test");
+    const emptyElement = new SmlElement("Test");
     expect(emptyElement.hasNamedNodes()).toEqual(false);
     expect(emptyElement.namedNodes()).toEqual([]);
     expect(emptyElement.hasElements()).toEqual(false);
@@ -845,7 +834,7 @@ test("SmlElement.hasNamedNodes + namedNodes + ...", () => {
     expect(emptyElement.attributes()).toEqual([]);
     expect(emptyElement.hasEmptyNodes()).toEqual(false);
     expect(emptyElement.emptyNodes()).toEqual([]);
-    const element = new src_1.SmlElement("Test");
+    const element = new SmlElement("Test");
     const attribute1 = element.addAttribute("Sub");
     const attribute2 = element.addAttribute("Sub");
     const attribute3 = element.addAttribute("Sub2");
@@ -900,20 +889,20 @@ test("SmlElement.hasNamedNodes + namedNodes + ...", () => {
     expect(element.emptyNodes()).toEqual([empty1, empty2]);
 });
 test("SmlElement.isEmpty", () => {
-    const emptyElement = new src_1.SmlElement("Test");
+    const emptyElement = new SmlElement("Test");
     expect(emptyElement.isEmpty()).toEqual(true);
-    const elementWithEmptyNode = new src_1.SmlElement("Test");
+    const elementWithEmptyNode = new SmlElement("Test");
     elementWithEmptyNode.addEmptyNode(null, "c");
     expect(elementWithEmptyNode.isEmpty()).toEqual(true);
-    const elementWithElement = new src_1.SmlElement("Test");
+    const elementWithElement = new SmlElement("Test");
     elementWithElement.addElement("Sub");
     expect(elementWithElement.isEmpty()).toEqual(false);
-    const elementWithAttribute = new src_1.SmlElement("Test");
+    const elementWithAttribute = new SmlElement("Test");
     elementWithAttribute.addAttribute("Sub");
     expect(elementWithAttribute.isEmpty()).toEqual(false);
 });
 test("SmlElement.toMinifiedString + minify", () => {
-    const element = src_1.SmlDocument.parse(`Element #comment\n\t  Sub\n\tEnd\n\t#comment\nEnd #comment`).root;
+    const element = SmlDocument.parse(`Element #comment\n\t  Sub\n\tEnd\n\t#comment\nEnd #comment`).root;
     expect(element.toMinifiedString()).toEqual("Element\nSub\n-\n-");
     expect(element.hasEmptyNodes()).toEqual(true);
     expect(element.hasEndComment).toEqual(true);
@@ -935,7 +924,7 @@ describe("SmlElement.alignAttributes", () => {
         ["  ", null, [true], `Test\n           A1  Va2        Val3  Value4  "Value 5"  -\n    Attibute2  "Value 2"  Va3   -\n"Attribute 3"  Value2     V3    V4      V5\nEnd`],
         ["  ", null, [false, true, true, true, true, true], `Test\n\tA1                   Va2  Val3  Value4  "Value 5"  -\n\tAttibute2      "Value 2"   Va3       -\n\t"Attribute 3"     Value2    V3      V4         V5\nEnd`],
     ])("Given %p returns %p", (input1, input2, input3, output) => {
-        const element = new src_1.SmlElement("Test");
+        const element = new SmlElement("Test");
         element.addAttribute("A1", ["Va2", "Val3", "Value4", "Value 5", null]);
         element.addAttribute("Attibute2", ["Value 2", "Va3", null]);
         element.addAttribute("Attribute 3", ["Value2", "V3", "V4", "V5"]);
@@ -943,14 +932,14 @@ describe("SmlElement.alignAttributes", () => {
         expect(element.toString()).toEqual(output);
     });
     test("Supplementary characters", () => {
-        const element = new src_1.SmlElement("Test");
+        const element = new SmlElement("Test");
         element.addAttribute("A1", ["Va2", "Val3", "Value4", "Value 5", null]);
         element.addAttribute("Attibute2", ["𝄞𝄞", "𝄞𝄞𝄞𝄞", "𝄞𝄞𝄞𝄞𝄞𝄞𝄞"]);
         element.alignAttributes();
         expect(element.toString()).toEqual(`Test\n\tA1        Va2 Val3 Value4  "Value 5" -\n\tAttibute2 𝄞𝄞  𝄞𝄞𝄞𝄞 𝄞𝄞𝄞𝄞𝄞𝄞𝄞\nEnd`);
     });
     test("Without arguments", () => {
-        const element = new src_1.SmlElement("Test");
+        const element = new SmlElement("Test");
         element.addAttribute("A1", ["Va2", "Val3", "Value4", "Value 5", null]);
         element.addAttribute("Attibute2", ["Value 2", "Va3", null]);
         element.addAttribute("Attribute 3", ["Value2", "V3", "V4", "V5"]);
@@ -959,13 +948,13 @@ describe("SmlElement.alignAttributes", () => {
     });
 });
 test("SmlElement.assureName", () => {
-    const element = new src_1.SmlElement("Test");
+    const element = new SmlElement("Test");
     element.assureName("Test");
     element.assureName("TEST");
     expect(() => element.assureName("Test2")).toThrowError();
 });
 test("SmlElement.assureElementNames + ...", () => {
-    const emptyElement = new src_1.SmlElement("Test");
+    const emptyElement = new SmlElement("Test");
     emptyElement.assureNoElements();
     emptyElement.assureNoAttributes();
     emptyElement.assureElementCount(0);
@@ -974,7 +963,7 @@ test("SmlElement.assureElementNames + ...", () => {
     emptyElement.assureAttributeNames([]);
     emptyElement.assureElementNames(["Sub"]);
     emptyElement.assureAttributeNames(["Sub"]);
-    const element = new src_1.SmlElement("Test");
+    const element = new SmlElement("Test");
     element.addAttribute("Sub");
     element.addAttribute("Sub");
     element.addAttribute("Sub2");
@@ -1009,7 +998,7 @@ describe("SmlElement.assureElementCountMinMax", () => {
         [null, 3, undefined],
         [1, 2, "Sub"],
     ])("Given %p", (input1, input2, input3) => {
-        const element = new src_1.SmlElement("Test");
+        const element = new SmlElement("Test");
         element.addElement("Sub");
         element.addElement("Sub");
         element.addElement("Sub2");
@@ -1026,14 +1015,14 @@ describe("SmlElement.assureElementCountMinMax", () => {
         [4, null, "Sub"],
         [null, 1, "Sub"],
     ])("Given %p throws", (input1, input2, input3) => {
-        const element = new src_1.SmlElement("Test");
+        const element = new SmlElement("Test");
         element.addElement("Sub");
         element.addElement("Sub");
         element.addElement("Sub2");
         expect(() => element.assureElementCountMinMax(input1, input2, input3)).toThrowError();
     });
     test("Without optional arguments", () => {
-        const element = new src_1.SmlElement("Test");
+        const element = new SmlElement("Test");
         element.addElement("Sub");
         element.addElement("Sub");
         element.assureElementCountMinMax(1);
@@ -1046,7 +1035,7 @@ describe("SmlElement.assureAttributeCountMinMax", () => {
         [null, 3, undefined],
         [1, 2, "Sub"],
     ])("Given %p", (input1, input2, input3) => {
-        const element = new src_1.SmlElement("Test");
+        const element = new SmlElement("Test");
         element.addAttribute("Sub");
         element.addAttribute("Sub");
         element.addAttribute("Sub2");
@@ -1063,26 +1052,26 @@ describe("SmlElement.assureAttributeCountMinMax", () => {
         [4, null, "Sub"],
         [null, 1, "Sub"],
     ])("Given %p throws", (input1, input2, input3) => {
-        const element = new src_1.SmlElement("Test");
+        const element = new SmlElement("Test");
         element.addAttribute("Sub");
         element.addAttribute("Sub");
         element.addAttribute("Sub2");
         expect(() => element.assureAttributeCountMinMax(input1, input2, input3)).toThrowError();
     });
     test("Without optional arguments", () => {
-        const element = new src_1.SmlElement("Test");
+        const element = new SmlElement("Test");
         element.addAttribute("Sub");
         element.addAttribute("Sub");
         element.assureAttributeCountMinMax(1);
     });
 });
 test("SmlElement.optionalElement + ...", () => {
-    const emptyElement = new src_1.SmlElement("Test");
+    const emptyElement = new SmlElement("Test");
     expect(emptyElement.optionalElement("Sub")).toEqual(null);
     expect(() => emptyElement.requiredElement("Sub")).toThrowError();
     expect(emptyElement.optionalAttribute("Sub")).toEqual(null);
     expect(() => emptyElement.requiredAttribute("Sub")).toThrowError();
-    const element = new src_1.SmlElement("Test");
+    const element = new SmlElement("Test");
     const attribute1 = element.addAttribute("Sub");
     const attribute2 = element.addAttribute("Sub");
     const attribute3 = element.addAttribute("Sub2");
@@ -1107,64 +1096,64 @@ test("SmlElement.optionalElement + ...", () => {
     expect(() => element.oneOrMoreAttributes("Sub3")).toThrowError();
 });
 test("SmlElement.assureEmpty", () => {
-    const element1 = new src_1.SmlElement("Test");
+    const element1 = new SmlElement("Test");
     element1.assureEmpty();
-    const element2 = new src_1.SmlElement("Test");
+    const element2 = new SmlElement("Test");
     element2.addElement("Sub1");
     expect(() => element2.assureEmpty()).toThrowError();
 });
 test("SmlElement.assureChoice", () => {
-    const element1 = new src_1.SmlElement("Test");
+    const element1 = new SmlElement("Test");
     element1.addAttribute("Sub1");
     element1.assureChoice(["Sub1", "Sub2"], ["Sub1", "Sub2"]);
-    const element2 = new src_1.SmlElement("Test");
+    const element2 = new SmlElement("Test");
     element2.addElement("Sub1");
     element2.assureChoice(["Sub1", "Sub2"], ["Sub1", "Sub2"]);
-    const element3 = new src_1.SmlElement("Test");
+    const element3 = new SmlElement("Test");
     element3.assureChoice(["Sub1", "Sub2"], ["Sub1", "Sub2"], true);
-    const element4 = new src_1.SmlElement("Test");
+    const element4 = new SmlElement("Test");
     element4.addElement("Sub1");
     element4.addElement("Sub1");
     expect(() => element4.assureChoice(["Sub1", "Sub2"], ["Sub1", "Sub2"])).toThrowError();
-    const element5 = new src_1.SmlElement("Test");
+    const element5 = new SmlElement("Test");
     expect(() => element5.assureChoice([], [])).toThrowError();
     expect(() => element5.assureChoice(["Sub1"], [])).toThrowError();
     expect(() => element5.assureChoice([], ["Sub1"])).toThrowError();
     expect(() => element5.assureChoice(["Sub1"], ["Sub1"])).toThrowError();
-    const element6 = new src_1.SmlElement("Test");
+    const element6 = new SmlElement("Test");
     element6.addElement("Sub1");
     element6.addElement("Sub2");
     expect(() => element6.assureChoice(["Sub1", "Sub2"], ["Sub1", "Sub2"])).toThrowError();
-    const element7 = new src_1.SmlElement("Test");
+    const element7 = new SmlElement("Test");
     element7.addElement("Sub1");
     element7.addAttribute("Sub1");
     expect(() => element7.assureChoice(["Sub1", "Sub2"], ["Sub1", "Sub2"])).toThrowError();
-    const element8 = new src_1.SmlElement("Test");
+    const element8 = new SmlElement("Test");
     element8.addAttribute("Sub1");
     element8.assureChoice(["Sub1", "Sub2"], ["Sub1", "Sub2"]);
-    const element9 = new src_1.SmlElement("Test");
+    const element9 = new SmlElement("Test");
     element9.addAttribute("Sub1");
     element9.addAttribute("Sub2");
     expect(() => element9.assureChoice(["Sub1", "Sub2"], ["Sub1", "Sub2"])).toThrowError();
-    const element10 = new src_1.SmlElement("Test");
+    const element10 = new SmlElement("Test");
     element10.addAttribute("Sub1");
     element10.addAttribute("Sub2");
     expect(() => element10.assureChoice(["Sub1", "Sub2"], ["Sub1", "Sub2"])).toThrowError();
 });
 test("SmlElement.parse", () => {
-    const element = src_1.SmlElement.parse("\n#test\nTest\nAttribute1 10\nEnd\n\n");
+    const element = SmlElement.parse("\n#test\nTest\nAttribute1 10\nEnd\n\n");
     expect(element.toString()).toEqual("Test\nAttribute1 10\nEnd");
 });
 // ----------------------------------------------------------------------
 describe("SmlDocument Constructor", () => {
     test.each([
-        ["End", reliabletxt_1.ReliableTxtEncoding.Utf8, "Root\nEnd"],
-        ["end", reliabletxt_1.ReliableTxtEncoding.Utf8, "Root\nend"],
-        [null, reliabletxt_1.ReliableTxtEncoding.Utf8, "Root\n-"],
-        ["End", reliabletxt_1.ReliableTxtEncoding.Utf16, "Root\nEnd"],
+        ["End", ReliableTxtEncoding.Utf8, "Root\nEnd"],
+        ["end", ReliableTxtEncoding.Utf8, "Root\nend"],
+        [null, ReliableTxtEncoding.Utf8, "Root\n-"],
+        ["End", ReliableTxtEncoding.Utf16, "Root\nEnd"],
     ])("Given %p and %p returns %p", (input1, input2, output) => {
-        const rootElement = new src_1.SmlElement("Root");
-        const document = new src_1.SmlDocument(rootElement, input1, input2);
+        const rootElement = new SmlElement("Root");
+        const document = new SmlDocument(rootElement, input1, input2);
         expect(document.encoding).toEqual(input2);
         expect(document.toString()).toEqual(output);
     });
@@ -1177,53 +1166,53 @@ describe("SmlDocument.defaultIndentation", () => {
         [" ", "Root\n Sub\n End\nEnd"],
         ["  ", "Root\n  Sub\n  End\nEnd"],
     ])("Given %p", (input, output) => {
-        const rootElement = new src_1.SmlElement("Root");
+        const rootElement = new SmlElement("Root");
         rootElement.addElement("Sub");
-        const document = new src_1.SmlDocument(rootElement);
+        const document = new SmlDocument(rootElement);
         document.defaultIndentation = input;
         expect(document.toString()).toEqual(output);
     });
 });
 test("SmlDocument.minify", () => {
     const content = "\n \n  \n#comment \n Root  \n  Attribute  10  20 #c  \n\n\n Sub\n  Attr 1 2 3#c\n\n   End\n  End #c\n#comment\n \n  \n";
-    const document = src_1.SmlDocument.parse(content);
+    const document = SmlDocument.parse(content);
     expect(document.toString()).toEqual(content);
     expect(document.toString(false)).toEqual(`Root\n\tAttribute 10 20\n\tSub\n\t\tAttr 1 2 3\n\tEnd\nEnd`);
     expect(document.toMinifiedString()).toEqual(`Root\nAttribute 10 20\nSub\nAttr 1 2 3\n-\n-`);
     document.minify();
     expect(document.toString()).toEqual(`Root\nAttribute 10 20\nSub\nAttr 1 2 3\n-\n-`);
     const minifiedContent = document.toMinifiedString();
-    const document2 = src_1.SmlDocument.parse(minifiedContent);
+    const document2 = SmlDocument.parse(minifiedContent);
     expect(document2.toString()).toEqual(minifiedContent);
 });
 describe("SmlDocument.getBytes + fromBytes", () => {
     test.each([
-        [reliabletxt_1.ReliableTxtEncoding.Utf8, [0xEF, 0xBB, 0xBF, 0x41, 0x0A, 0x45, 0x6E, 0x64]],
-        [reliabletxt_1.ReliableTxtEncoding.Utf16, [0xFE, 0xFF, 0x0, 0x41, 0x0, 0x0A, 0x0, 0x45, 0x0, 0x6E, 0x0, 0x64]],
-        [reliabletxt_1.ReliableTxtEncoding.Utf16Reverse, [0xFF, 0xFE, 0x41, 0x0, 0x0A, 0x0, 0x45, 0x0, 0x6E, 0x0, 0x64, 0x0]],
-        [reliabletxt_1.ReliableTxtEncoding.Utf32, [0x0, 0x0, 0xFE, 0xFF, 0x0, 0x0, 0x0, 0x41, 0x0, 0x0, 0x0, 0x0A, 0x0, 0x0, 0x0, 0x45, 0x0, 0x0, 0x0, 0x6E, 0x0, 0x0, 0x0, 0x64]],
+        [ReliableTxtEncoding.Utf8, [0xEF, 0xBB, 0xBF, 0x41, 0x0A, 0x45, 0x6E, 0x64]],
+        [ReliableTxtEncoding.Utf16, [0xFE, 0xFF, 0x0, 0x41, 0x0, 0x0A, 0x0, 0x45, 0x0, 0x6E, 0x0, 0x64]],
+        [ReliableTxtEncoding.Utf16Reverse, [0xFF, 0xFE, 0x41, 0x0, 0x0A, 0x0, 0x45, 0x0, 0x6E, 0x0, 0x64, 0x0]],
+        [ReliableTxtEncoding.Utf32, [0x0, 0x0, 0xFE, 0xFF, 0x0, 0x0, 0x0, 0x41, 0x0, 0x0, 0x0, 0x0A, 0x0, 0x0, 0x0, 0x45, 0x0, 0x0, 0x0, 0x6E, 0x0, 0x0, 0x0, 0x64]],
     ])("Given %p returns %p", (encoding, output) => {
-        const document = new src_1.SmlDocument(new src_1.SmlElement("A"));
+        const document = new SmlDocument(new SmlElement("A"));
         document.encoding = encoding;
         const bytes = document.getBytes();
         expect(bytes).toEqual(new Uint8Array(output));
         expect(document.toString()).toEqual("A\nEnd");
-        const document2 = src_1.SmlDocument.fromBytes(bytes);
+        const document2 = SmlDocument.fromBytes(bytes);
         expect(document2.encoding).toEqual(encoding);
         expect(document2.toString()).toEqual("A\nEnd");
     });
 });
 describe("SmlDocument.toBase64String + fromBase64String", () => {
     test.each([
-        [reliabletxt_1.ReliableTxtEncoding.Utf8, "Base64|77u/QQpFbmQ|"],
-        [reliabletxt_1.ReliableTxtEncoding.Utf16, "Base64|/v8AQQAKAEUAbgBk|"],
+        [ReliableTxtEncoding.Utf8, "Base64|77u/QQpFbmQ|"],
+        [ReliableTxtEncoding.Utf16, "Base64|/v8AQQAKAEUAbgBk|"],
     ])("Given %p returns %p", (encoding, output) => {
-        const document = new src_1.SmlDocument(new src_1.SmlElement("A"));
+        const document = new SmlDocument(new SmlElement("A"));
         document.encoding = encoding;
         const base64Str = document.toBase64String();
         expect(base64Str).toEqual(output);
         expect(document.toString()).toEqual("A\nEnd");
-        const document2 = src_1.SmlDocument.fromBase64String(base64Str);
+        const document2 = SmlDocument.fromBase64String(base64Str);
         expect(document2.encoding).toEqual(encoding);
         expect(document2.toString()).toEqual("A\nEnd");
     });
@@ -1234,7 +1223,7 @@ describe("SmlDocument.parse", () => {
         ["  Root  \n  End  ", false, "Root\nEnd", "Root\nEnd"],
         [`MyRootElement\n  MyFirstAttribute "123"\n  MySecondAttribute "10" "20" "30" "40" "50"\nEnd`, true, `MyRootElement\n  MyFirstAttribute 123\n  MySecondAttribute 10 20 30 40 50\nEnd`, `MyRootElement\n\tMyFirstAttribute 123\n\tMySecondAttribute 10 20 30 40 50\nEnd`],
     ])("Given %p and %p", (input1, input2, output1, output2) => {
-        const document = src_1.SmlDocument.parse(input1, input2);
+        const document = SmlDocument.parse(input1, input2);
         expect(document.toString()).toEqual(output1);
         expect(document.toString(false)).toEqual(output2);
     });
@@ -1261,9 +1250,9 @@ describe("SmlDocument.parse", () => {
         [`Root\n  End 12 13\nEnd`],
         [`Root\n-`],
     ])("Given %p", (input) => {
-        const document = src_1.SmlDocument.parse(input);
+        const document = SmlDocument.parse(input);
         expect(document.toString()).toEqual(input);
-        expect(src_1.SmlDocument.parse(input, false).toString()).toEqual(document.toString(false));
+        expect(SmlDocument.parse(input, false).toString()).toEqual(document.toString(false));
     });
     test.each([
         [""],
@@ -1283,33 +1272,33 @@ describe("SmlDocument.parse", () => {
         [`Root\n  Attribute 1 2`],
         [`End`],
     ])("Given %p throws", (input) => {
-        expect(() => src_1.SmlDocument.parse(input)).toThrowError();
-        expect(() => src_1.SmlDocument.parse(input, false)).toThrowError();
+        expect(() => SmlDocument.parse(input)).toThrowError();
+        expect(() => SmlDocument.parse(input, false)).toThrowError();
     });
 });
 test("SmlDocument.toString throws", () => {
-    const document = new src_1.SmlDocument(new src_1.SmlElement("End"));
+    const document = new SmlDocument(new SmlElement("End"));
     expect(() => document.toString()).toThrowError();
-    const document2 = new src_1.SmlDocument(new src_1.SmlElement("Test"), "test");
+    const document2 = new SmlDocument(new SmlElement("Test"), "test");
     expect(() => document2.toString()).toThrowError();
 });
 test("SmlDocument.toJaggedArray + fromJaggedArray", () => {
-    const document = src_1.SmlDocument.parse(`Root\n Attribute 1 2\nEnd`, false);
+    const document = SmlDocument.parse(`Root\n Attribute 1 2\nEnd`, false);
     const jaggedArray = document.toJaggedArray();
     expect(jaggedArray).toEqual([["Root"], ["Attribute", "1", "2"], ["End"]]);
-    const document2 = src_1.SmlDocument.fromJaggedArray(jaggedArray);
+    const document2 = SmlDocument.fromJaggedArray(jaggedArray);
     expect(document2.toString()).toEqual(document.toString());
 });
 // ----------------------------------------------------------------------
 test("SmlParserError.constructor", () => {
-    const error = new src_1.SmlParserError(10, "Test");
+    const error = new SmlParserError(10, "Test");
     expect(error.message).toEqual("Test (11)");
     expect(error.lineIndex).toEqual(10);
 });
 // ----------------------------------------------------------------------
 test("WsvDocumentLineIterator", () => {
-    const wsvDocument = wsv_1.WsvDocument.parse(`Root\nEnd`);
-    const iterator = new src_1.SyncWsvDocumentLineIterator(wsvDocument, "End");
+    const wsvDocument = WsvDocument.parse(`Root\nEnd`);
+    const iterator = new SyncWsvDocumentLineIterator(wsvDocument, "End");
     const lineArray = iterator.getLineAsArray();
     expect(lineArray).toEqual(["Root"]);
     expect(iterator.toString()).toEqual("(2): End");
@@ -1317,9 +1306,9 @@ test("WsvDocumentLineIterator", () => {
 // ----------------------------------------------------------------------
 test("WsvJaggedArrayLineIterator", () => {
     const jaggedArray = [["Root"], ["Attribute", "1", "2"], ["End"]];
-    const iterator = new src_1.SyncWsvJaggedArrayLineIterator(jaggedArray, "End");
+    const iterator = new SyncWsvJaggedArrayLineIterator(jaggedArray, "End");
     expect(iterator.getLineAsArray()).toEqual(["Root"]);
-    expect(iterator.getLine()).toEqual(new wsv_1.WsvLine(["Attribute", "1", "2"]));
+    expect(iterator.getLine()).toEqual(new WsvLine(["Attribute", "1", "2"]));
     expect(iterator.toString()).toEqual("(3): End");
 });
 // ----------------------------------------------------------------------
@@ -1332,27 +1321,19 @@ class TestWsvDocumentLineIterator {
     getEndKeyword() {
         return this.endKeyword;
     }
-    hasLine() {
-        return __awaiter(this, void 0, void 0, function* () {
-            return this.index < this.wsvDocument.lines.length;
-        });
+    async hasLine() {
+        return this.index < this.wsvDocument.lines.length;
     }
-    isEmptyLine() {
-        return __awaiter(this, void 0, void 0, function* () {
-            return (yield this.hasLine()) && !this.wsvDocument.lines[this.index].hasValues;
-        });
+    async isEmptyLine() {
+        return await this.hasLine() && !this.wsvDocument.lines[this.index].hasValues;
     }
-    getLineAsArray() {
-        return __awaiter(this, void 0, void 0, function* () {
-            return (yield this.getLine()).values;
-        });
+    async getLineAsArray() {
+        return (await this.getLine()).values;
     }
-    getLine() {
-        return __awaiter(this, void 0, void 0, function* () {
-            const line = this.wsvDocument.lines[this.index];
-            this.index++;
-            return line;
-        });
+    async getLine() {
+        const line = this.wsvDocument.lines[this.index];
+        this.index++;
+        return line;
     }
     toString() {
         let result = "(" + (this.index + 1) + "): ";
@@ -1367,50 +1348,50 @@ class TestWsvDocumentLineIterator {
 }
 // ----------------------------------------------------------------------
 test("SmlParser", () => {
-    const document1 = src_1.SmlParser.parseDocumentSync(` Root \nEnd`);
-    expect(document1.encoding).toEqual(reliabletxt_1.ReliableTxtEncoding.Utf8);
+    const document1 = SmlParser.parseDocumentSync(` Root \nEnd`);
+    expect(document1.encoding).toEqual(ReliableTxtEncoding.Utf8);
     expect(document1.toString()).toEqual(` Root \nEnd`);
-    const document2 = src_1.SmlParser.parseDocumentNonPreservingSync(` Root \nEnd`);
-    expect(document2.encoding).toEqual(reliabletxt_1.ReliableTxtEncoding.Utf8);
+    const document2 = SmlParser.parseDocumentNonPreservingSync(` Root \nEnd`);
+    expect(document2.encoding).toEqual(ReliableTxtEncoding.Utf8);
     expect(document2.toString()).toEqual(`Root\nEnd`);
-    const document3 = src_1.SmlParser.parseJaggedArraySync([["Root"], ["End"]]);
-    expect(document3.encoding).toEqual(reliabletxt_1.ReliableTxtEncoding.Utf8);
+    const document3 = SmlParser.parseJaggedArraySync([["Root"], ["End"]]);
+    expect(document3.encoding).toEqual(ReliableTxtEncoding.Utf8);
     expect(document3.toString()).toEqual(`Root\nEnd`);
 });
 describe("SmlParser Async", () => {
-    test("Given", () => __awaiter(void 0, void 0, void 0, function* () {
-        const document = wsv_1.WsvDocument.parse("Root\nAttribute1 10\nSub\nSubAttr -\nEnd\n#comment\nEnd");
+    test("Given", async () => {
+        const document = WsvDocument.parse("Root\nAttribute1 10\nSub\nSubAttr -\nEnd\n#comment\nEnd");
         const iterator = new TestWsvDocumentLineIterator(document, "End");
         const emptyNodes = [];
-        const rootElement = yield src_1.SmlParser.readRootElement(iterator, emptyNodes);
+        const rootElement = await SmlParser.readRootElement(iterator, emptyNodes);
         expect(rootElement.name).toEqual("Root");
-        const node1 = yield src_1.SmlParser.readNode(iterator, rootElement);
+        const node1 = await SmlParser.readNode(iterator, rootElement);
         expect(node1.toString()).toEqual("Attribute1 10");
-        const node2 = yield src_1.SmlParser.readNode(iterator, rootElement);
+        const node2 = await SmlParser.readNode(iterator, rootElement);
         expect(node2.toString()).toEqual("Sub\nSubAttr -\nEnd");
-        const node3 = yield src_1.SmlParser.readNode(iterator, rootElement);
+        const node3 = await SmlParser.readNode(iterator, rootElement);
         expect(node3.toString()).toEqual("#comment");
-    }));
+    });
     test.each([
         [""],
         [`-`],
         [`End`],
-    ])("Given %p throws", (input) => __awaiter(void 0, void 0, void 0, function* () {
-        const document = wsv_1.WsvDocument.parse(input);
+    ])("Given %p throws", async (input) => {
+        const document = WsvDocument.parse(input);
         const iterator = new TestWsvDocumentLineIterator(document, "End");
         const emptyNodes = [];
-        yield expect(() => __awaiter(void 0, void 0, void 0, function* () { return yield src_1.SmlParser.readRootElement(iterator, emptyNodes); })).rejects.toThrowError();
-    }));
+        await expect(async () => await SmlParser.readRootElement(iterator, emptyNodes)).rejects.toThrowError();
+    });
     test.each([
         ["Root\nSub"],
         ["Root\n-"],
         ["Root\n- 1"],
-    ])("Given %p throws", (input) => __awaiter(void 0, void 0, void 0, function* () {
-        const document = wsv_1.WsvDocument.parse(input);
+    ])("Given %p throws", async (input) => {
+        const document = WsvDocument.parse(input);
         const iterator = new TestWsvDocumentLineIterator(document, "End");
         const emptyNodes = [];
-        const rootElement = yield src_1.SmlParser.readRootElement(iterator, emptyNodes);
-        yield expect(() => __awaiter(void 0, void 0, void 0, function* () { return yield src_1.SmlParser.readNode(iterator, rootElement); })).rejects.toThrowError();
-    }));
+        const rootElement = await SmlParser.readRootElement(iterator, emptyNodes);
+        await expect(async () => await SmlParser.readNode(iterator, rootElement)).rejects.toThrowError();
+    });
 });
 //# sourceMappingURL=sml.test.js.map

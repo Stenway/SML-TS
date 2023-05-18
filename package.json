@@ -1,14 +1,15 @@
 {
   "name": "@stenway/sml",
-  "version": "0.5.0",
-  "description": "Stefan John / Stenway / SimpleML.com / 2023",
+  "version": "0.6.0",
+  "type": "module",
+  "description": "Serialize and deserialze SML documents",
   "homepage": "https://www.simpleml.com",
   "repository": "github:Stenway/SML-TS",
   "bugs": {
     "url": "https://github.com/Stenway/SML-TS/issues"
   },
-  "main": "dist/src/index.js",
-  "types": "dist/src/index.d.ts",
+  "exports": "./dist/src/sml.js",
+  "types": "dist/src/sml.d.ts",
   "files": [
     "/dist/src"
   ],
@@ -30,18 +31,18 @@
   "author": "Stefan John",
   "license": "MIT",
   "devDependencies": {
-    "@types/jest": "^29.2.4",
-    "@typescript-eslint/eslint-plugin": "^5.47.1",
-    "@typescript-eslint/parser": "^5.47.1",
-    "eslint": "^8.30.0",
-    "jest": "^29.3.1",
-    "ts-jest": "^29.0.3",
+    "@types/jest": "^29.5.1",
+    "@typescript-eslint/eslint-plugin": "^5.59.1",
+    "@typescript-eslint/parser": "^5.59.1",
+    "eslint": "^8.39.0",
+    "jest": "^29.5.0",
+    "ts-jest": "^29.1.0",
     "ts-node": "^10.9.1",
-    "tsconfig-paths": "^4.1.2",
-    "typescript": "^4.8.4"
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.0.4"
   },
   "dependencies": {
-    "@stenway/reliabletxt": "^0.5.0",
-    "@stenway/wsv": "^0.5.0"
+    "@stenway/reliabletxt": "^0.6.0",
+    "@stenway/wsv": "^0.6.0"
   }
 }

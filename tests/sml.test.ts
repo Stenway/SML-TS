@@ -1,7 +1,7 @@
 ﻿/* eslint-disable no-irregular-whitespace */
 import { ReliableTxtEncoding } from "@stenway/reliabletxt"
 import { WsvDocument, WsvLine } from "@stenway/wsv"
-import { SmlAttribute, SmlDocument, SmlElement, SmlEmptyNode, SmlNamedNode, SmlNode, SmlParser, SmlParserError, SyncWsvDocumentLineIterator, SyncWsvJaggedArrayLineIterator, WsvLineIterator } from "../src"
+import { SmlAttribute, SmlDocument, SmlElement, SmlEmptyNode, SmlNamedNode, SmlNode, SmlParser, SmlParserError, SyncWsvDocumentLineIterator, SyncWsvJaggedArrayLineIterator, WsvLineIterator } from "../src/sml.js"
 
 describe("SmlNode.isElement + isAttribute + isEmptyNode + isNamedNode", () => {
 	test.each([
