@@ -1,6 +1,6 @@
 /* (C) Stefan John / Stenway / SimpleML.com / 2023 */
 import { Base64String, ReliableTxtDocument, ReliableTxtEncoding, ReliableTxtLines, Utf16String } from "@stenway/reliabletxt";
-import { WsvStringUtil, WsvDocument, WsvLine, WsvSerializer, WsvValue } from "@stenway/wsv";
+import { WsvStringUtil, WsvDocument, WsvLine, WsvSerializer, WsvValue, Uint8ArrayBuilder, Uint8ArrayReader, BinaryWsvDecoder } from "@stenway/wsv";
 // ----------------------------------------------------------------------
 export class SmlNode {
     constructor() {
@@ -197,6 +197,19 @@ export class SmlAttribute extends SmlNamedNode {
         else {
             SmlSerializer.internalSerializeValuesWhitespacesAndComment(combined, null, null, lines, level, defaultIndentation);
         }
+    }
+    internalBinarySerialize(builder) {
+        for (const value of this._values) {
+            if (value === null) {
+                builder.pushByte(BinarySmlUtil.nullValueByte);
+            }
+            else {
+                const strValueEncoded = Utf16String.toUtf8Bytes(value);
+                builder.pushVarInt56(strValueEncoded.length + 2);
+                builder.push(strValueEncoded);
+            }
+        }
+        builder.pushByte(BinarySmlUtil.attributeEndByte);
     }
     assureName(name) {
         if (!this.hasName(name)) {
@@ -969,6 +982,10 @@ export class SmlElement extends SmlNamedNode {
         }
         return this;
     }
+    toJaggedArray(minified = false) {
+        const endKeyword = minified ? null : "End";
+        return SmlJaggedArraySerializer.serialzeElement(this, endKeyword);
+    }
     static parse(content, preserveWhitespaceAndComments = true) {
         // TODO optimize
         return SmlDocument.parse(content, preserveWhitespaceAndComments).root;
@@ -1018,10 +1035,12 @@ export class SmlDocument {
         const str = this.toString(preserveWhitespacesAndComments);
         return Base64String.fromText(str, this.encoding);
     }
-    toJaggedArray() {
-        // TODO optimize
-        const content = this.toString(false);
-        return WsvDocument.parseAsJaggedArray(content);
+    toJaggedArray(minified = false) {
+        const endKeyword = minified ? null : this.endKeyword;
+        return SmlJaggedArraySerializer.serialzeElement(this.root, endKeyword);
+    }
+    toBinarySml() {
+        return BinarySmlEncoder.encode(this);
     }
     static parse(content, preserveWhitespaceAndComments = true, encoding = ReliableTxtEncoding.Utf8) {
         if (preserveWhitespaceAndComments) {
@@ -1041,6 +1060,9 @@ export class SmlDocument {
     static fromBase64String(base64Str) {
         const bytes = Base64String.toBytes(base64Str);
         return this.fromBytes(bytes);
+    }
+    static fromBinarySml(bytes) {
+        return BinarySmlDecoder.decode(bytes);
     }
 }
 // ----------------------------------------------------------------------
@@ -1107,6 +1129,27 @@ export class SmlSerializer {
     static internalSerializeValuesWhitespacesAndComment(values, whitespaces, comment, lines, level, defaultIndentation) {
         whitespaces = SmlSerializer.getWhitespaces(whitespaces, level, defaultIndentation);
         lines.push(WsvSerializer.internalSerializeValuesWhitespacesAndComment(values, whitespaces, comment));
+    }
+}
+// ----------------------------------------------------------------------
+export class SmlJaggedArraySerializer {
+    static _serializeElement(element, endKeyword, jaggedArray) {
+        jaggedArray.push([element.name]);
+        for (const node of element.nodes) {
+            if (node.isAttribute()) {
+                const attribute = node;
+                jaggedArray.push([attribute.name, ...attribute.values]);
+            }
+            else if (node.isElement()) {
+                this._serializeElement(node, endKeyword, jaggedArray);
+            }
+        }
+        jaggedArray.push([endKeyword]);
+    }
+    static serialzeElement(element, endKeyword) {
+        const result = [];
+        this._serializeElement(element, endKeyword, result);
+        return result;
     }
 }
 // ----------------------------------------------------------------------
@@ -1190,7 +1233,7 @@ export class SyncWsvJaggedArrayLineIterator {
     }
 }
 // ----------------------------------------------------------------------
-class SmlParser {
+export class SmlParser {
     static parseAttributeSync(content, preserveWhitespacesAndComments) {
         const line = WsvLine.parse(content, preserveWhitespacesAndComments);
         if (line.values.length < 2) {
@@ -1504,5 +1547,173 @@ SmlParser.invalidRootElementStart = "Invalid root element start";
 SmlParser.nullValueAsElementNameIsNotAllowed = "Null value as element name is not allowed";
 SmlParser.nullValueAsAttributeNameIsNotAllowed = "Null value as attribute name is not allowed";
 SmlParser.endKeywordCouldNotBeDetected = "End keyword could not be detected";
-export { SmlParser };
+// ----------------------------------------------------------------------
+export class BinarySmlUtil {
+    static getPreambleVersion1() {
+        return new Uint8Array([0x42, 0x53, 0x4D, 0x4C, 0x31]);
+    }
+}
+BinarySmlUtil.elementEndByte = 0b00000001;
+BinarySmlUtil.emptyElementNameByte = 0b00000101;
+BinarySmlUtil.emptyAttributeNameByte = 0b00000011;
+BinarySmlUtil.attributeEndByte = 0b00000001;
+BinarySmlUtil.nullValueByte = 0b00000011;
+// ----------------------------------------------------------------------
+export class BinarySmlEncoder {
+    static _encodeAttribute(attribute, builder) {
+        if (attribute.name.length === 0) {
+            builder.pushByte(BinarySmlUtil.emptyAttributeNameByte);
+        }
+        else {
+            const attributeNameEncoded = Utf16String.toUtf8Bytes(attribute.name);
+            builder.pushVarInt56((attributeNameEncoded.length << 1) | 1);
+            builder.push(attributeNameEncoded);
+        }
+        attribute.internalBinarySerialize(builder);
+    }
+    static _encodeElement(element, builder, isRootElement) {
+        if (element.name.length === 0) {
+            builder.pushByte(BinarySmlUtil.emptyElementNameByte);
+        }
+        else {
+            const elementNameEncoded = Utf16String.toUtf8Bytes(element.name);
+            builder.pushVarInt56((elementNameEncoded.length + 1) << 1);
+            builder.push(elementNameEncoded);
+        }
+        for (const node of element.nodes) {
+            if (node.isAttribute()) {
+                this._encodeAttribute(node, builder);
+            }
+            else if (node.isElement()) {
+                this._encodeElement(node, builder, false);
+            }
+        }
+        if (isRootElement === false) {
+            builder.pushByte(BinarySmlUtil.elementEndByte);
+        }
+    }
+    static encodeElement(element, isRootElement = false) {
+        const builder = new Uint8ArrayBuilder();
+        if (isRootElement === true) {
+            const preamble = BinarySmlUtil.getPreambleVersion1();
+            builder.push(preamble);
+        }
+        this._encodeElement(element, builder, isRootElement);
+        return builder.getArray();
+    }
+    static encodeAttribute(attribute) {
+        const builder = new Uint8ArrayBuilder();
+        this._encodeAttribute(attribute, builder);
+        return builder.getArray();
+    }
+    static encodeNode(node) {
+        if (node.isAttribute()) {
+            return this.encodeAttribute(node);
+        }
+        else if (node.isElement()) {
+            return this.encodeElement(node);
+        }
+        else
+            return new Uint8Array(0);
+    }
+    static encodeNodes(nodes) {
+        const builder = new Uint8ArrayBuilder();
+        for (const node of nodes) {
+            if (node.isAttribute()) {
+                this._encodeAttribute(node, builder);
+            }
+            else if (node.isElement()) {
+                this._encodeElement(node, builder, false);
+            }
+        }
+        return builder.getArray();
+    }
+    static encode(document) {
+        return this.encodeElement(document.root, true);
+    }
+}
+// ----------------------------------------------------------------------
+export class NoBinarySmlPreambleError extends Error {
+    constructor() {
+        super("Document does not have a BinarySML preamble");
+    }
+}
+// ----------------------------------------------------------------------
+export class InvalidBinarySmlError extends Error {
+    constructor() {
+        super("Invalid BinarySML");
+    }
+}
+// ----------------------------------------------------------------------
+export class BinarySmlDecoder {
+    static getVersion(bytes) {
+        const version = this.getVersionOrNull(bytes);
+        if (version === null) {
+            throw new NoBinarySmlPreambleError();
+        }
+        return version;
+    }
+    static getVersionOrNull(bytes) {
+        if (bytes.length < 5 ||
+            bytes[0] !== 0x42 ||
+            bytes[1] !== 0x53 ||
+            bytes[2] !== 0x4D ||
+            bytes[3] !== 0x4C) {
+            return null;
+        }
+        return String.fromCharCode(bytes[4]);
+    }
+    static _decodeAttribute(reader, attributeVarInt) {
+        const attributeName = attributeVarInt === 0b1 ? "" : reader.readString(attributeVarInt >> 1);
+        const values = [];
+        while (reader.hasBytes) {
+            const wasAttributeEnd = BinaryWsvDecoder.decodeValue(reader, values);
+            if (wasAttributeEnd === true) {
+                return new SmlAttribute(attributeName, values);
+            }
+        }
+        throw new InvalidBinarySmlError();
+    }
+    static _decodeElement(reader, isRootElement, elementVarInt) {
+        const elementName = elementVarInt === 0b10 ? "" : reader.readString((elementVarInt >> 1) - 1);
+        const element = new SmlElement(elementName);
+        while (reader.hasBytes) {
+            const varInt = reader.readVarInt56();
+            if (varInt === 0) {
+                if (isRootElement === true) {
+                    throw new InvalidBinarySmlError();
+                }
+                return element;
+            }
+            else if ((varInt & 0b1) === 0) {
+                const childElement = this._decodeElement(reader, false, varInt);
+                element.addNode(childElement);
+            }
+            else {
+                const childAttribute = this._decodeAttribute(reader, varInt);
+                element.addNode(childAttribute);
+            }
+        }
+        if (isRootElement === false) {
+            throw new InvalidBinarySmlError();
+        }
+        return element;
+    }
+    static decode(bytes) {
+        const version = this.getVersion(bytes);
+        if (version !== "1") {
+            throw new Error(`Not supported BinarySML version '${version}'`);
+        }
+        const reader = new Uint8ArrayReader(bytes, 5);
+        const varInt = reader.readVarInt56();
+        if ((varInt & 0b1) === 1) {
+            throw new InvalidBinarySmlError();
+        }
+        const rootElement = this._decodeElement(reader, true, varInt);
+        if (reader.hasBytes) {
+            throw new InvalidBinarySmlError();
+        }
+        return new SmlDocument(rootElement);
+    }
+}
 //# sourceMappingURL=sml.js.map

@@ -1,5 +1,5 @@
 import { ReliableTxtEncoding } from "@stenway/reliabletxt";
-import { WsvDocument, WsvLine } from "@stenway/wsv";
+import { WsvDocument, WsvLine, Uint8ArrayBuilder } from "@stenway/wsv";
 export declare abstract class SmlNode {
     protected _whitespaces: (string | null)[] | null;
     protected _comment: string | null;
@@ -49,6 +49,7 @@ export declare class SmlAttribute extends SmlNamedNode {
     constructor(name: string, values?: (string | null)[]);
     toString(preserveWhitespaceAndComment?: boolean): string;
     internalSerialize(lines: string[], level: number, defaultIndentation: string | null, endKeyword: string | null, preserveWhitespaceAndComment: boolean): void;
+    internalBinarySerialize(builder: Uint8ArrayBuilder): void;
     assureName(name: string): SmlAttribute;
     assureValueCount(count: number): SmlAttribute;
     assureValueCountMinMax(min: number | null, max?: number | null): SmlAttribute;
@@ -140,6 +141,7 @@ export declare class SmlElement extends SmlNamedNode {
     oneOrMoreAttributes(attributeName: string): SmlAttribute[];
     assureEmpty(): SmlElement;
     assureChoice(elementNames: string[] | null, attributeNames: string[] | null, canBeEmpty?: boolean): SmlElement;
+    toJaggedArray(minified?: boolean): (string | null)[][];
     static parse(content: string, preserveWhitespaceAndComments?: boolean): SmlElement;
     static internalSetEndWhitespacesAndComment(element: SmlElement, endWhitespaces: (string | null)[] | null, endComment: string | null): void;
 }
@@ -158,11 +160,13 @@ export declare class SmlDocument {
     toMinifiedString(): string;
     getBytes(preserveWhitespacesAndComments?: boolean): Uint8Array;
     toBase64String(preserveWhitespacesAndComments?: boolean): string;
-    toJaggedArray(): (string | null)[][];
+    toJaggedArray(minified?: boolean): (string | null)[][];
+    toBinarySml(): Uint8Array;
     static parse(content: string, preserveWhitespaceAndComments?: boolean, encoding?: ReliableTxtEncoding): SmlDocument;
     static fromBytes(bytes: Uint8Array, preserveWhitespaceAndComments?: boolean): SmlDocument;
     static fromJaggedArray(jaggedArray: (string | null)[][], encoding?: ReliableTxtEncoding): SmlDocument;
     static fromBase64String(base64Str: string): SmlDocument;
+    static fromBinarySml(bytes: Uint8Array): SmlDocument;
 }
 export declare abstract class SmlStringUtil {
     static equalsIgnoreCase(str1: string, str2: string): boolean;
@@ -176,6 +180,10 @@ export declare abstract class SmlSerializer {
     private static serialzeEmptyNodes;
     static getWhitespaces(whitespaces: (string | null)[] | null, level: number, defaultIndentation: string | null): (string | null)[] | null;
     static internalSerializeValuesWhitespacesAndComment(values: (string | null)[], whitespaces: (string | null)[] | null, comment: string | null, lines: string[], level: number, defaultIndentation: string | null): void;
+}
+export declare abstract class SmlJaggedArraySerializer {
+    private static _serializeElement;
+    static serialzeElement(element: SmlElement, endKeyword: string | null): (string | null)[][];
 }
 export declare class SmlParserError extends Error {
     readonly lineIndex: number;
@@ -256,5 +264,35 @@ export declare abstract class SmlParser {
     private static readNodeNonPreservingSync;
     private static readElementContentNonPreservingSync;
     private static determineEndKeywordFromJaggedArraySync;
+}
+export declare abstract class BinarySmlUtil {
+    static getPreambleVersion1(): Uint8Array;
+    static readonly elementEndByte = 1;
+    static readonly emptyElementNameByte = 5;
+    static readonly emptyAttributeNameByte = 3;
+    static readonly attributeEndByte = 1;
+    static readonly nullValueByte = 3;
+}
+export declare abstract class BinarySmlEncoder {
+    private static _encodeAttribute;
+    private static _encodeElement;
+    static encodeElement(element: SmlElement, isRootElement?: boolean): Uint8Array;
+    static encodeAttribute(attribute: SmlAttribute): Uint8Array;
+    static encodeNode(node: SmlNode): Uint8Array;
+    static encodeNodes(nodes: SmlNode[]): Uint8Array;
+    static encode(document: SmlDocument): Uint8Array;
+}
+export declare class NoBinarySmlPreambleError extends Error {
+    constructor();
+}
+export declare class InvalidBinarySmlError extends Error {
+    constructor();
+}
+export declare abstract class BinarySmlDecoder {
+    static getVersion(bytes: Uint8Array): string;
+    static getVersionOrNull(bytes: Uint8Array): string | null;
+    private static _decodeAttribute;
+    private static _decodeElement;
+    static decode(bytes: Uint8Array): SmlDocument;
 }
 //# sourceMappingURL=sml.d.ts.map

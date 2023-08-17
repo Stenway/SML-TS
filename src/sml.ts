@@ -1,7 +1,7 @@
 ﻿/* (C) Stefan John / Stenway / SimpleML.com / 2023 */
 
 import { Base64String, ReliableTxtDocument, ReliableTxtEncoding, ReliableTxtLines, Utf16String } from "@stenway/reliabletxt"
-import { WsvStringUtil, WsvDocument, WsvLine, WsvSerializer, WsvValue } from "@stenway/wsv"
+import { WsvStringUtil, WsvDocument, WsvLine, WsvSerializer, WsvValue, Uint8ArrayBuilder, Uint8ArrayReader, BinaryWsvDecoder } from "@stenway/wsv"
 
 // ----------------------------------------------------------------------
 
@@ -204,6 +204,19 @@ export class SmlAttribute extends SmlNamedNode {
 		const combined: (string | null)[] = [this.name, ...this.values]
 		if (preserveWhitespaceAndComment) { SmlSerializer.internalSerializeValuesWhitespacesAndComment(combined, this._whitespaces, this._comment, lines, level, defaultIndentation) }
 		else { SmlSerializer.internalSerializeValuesWhitespacesAndComment(combined, null, null, lines, level, defaultIndentation) }
+	}
+
+	internalBinarySerialize(builder: Uint8ArrayBuilder) {
+		for (const value of this._values) {
+			if (value === null) {
+				builder.pushByte(BinarySmlUtil.nullValueByte)
+			} else {
+				const strValueEncoded = Utf16String.toUtf8Bytes(value)
+				builder.pushVarInt56(strValueEncoded.length + 2)
+				builder.push(strValueEncoded)
+			}
+		}
+		builder.pushByte(BinarySmlUtil.attributeEndByte)
 	}
 
 	assureName(name: string): SmlAttribute {
@@ -918,6 +931,11 @@ export class SmlElement extends SmlNamedNode {
 		return this
 	}
 
+	toJaggedArray(minified: boolean = false): (string | null)[][] {
+		const endKeyword = minified ? null : "End"
+		return SmlJaggedArraySerializer.serialzeElement(this, endKeyword)
+	}
+
 	static parse(content: string, preserveWhitespaceAndComments: boolean = true): SmlElement {
 		// TODO optimize
 		return SmlDocument.parse(content, preserveWhitespaceAndComments).root
@@ -982,10 +1000,13 @@ export class SmlDocument {
 		return Base64String.fromText(str, this.encoding)
 	}
 
-	toJaggedArray(): (string | null)[][] {
-		// TODO optimize
-		const content = this.toString(false)
-		return WsvDocument.parseAsJaggedArray(content)
+	toJaggedArray(minified: boolean = false): (string | null)[][] {
+		const endKeyword = minified ? null : this.endKeyword
+		return SmlJaggedArraySerializer.serialzeElement(this.root, endKeyword)
+	}
+
+	toBinarySml(): Uint8Array {
+		return BinarySmlEncoder.encode(this)
 	}
 
 	static parse(content: string, preserveWhitespaceAndComments: boolean = true, encoding: ReliableTxtEncoding = ReliableTxtEncoding.Utf8): SmlDocument {
@@ -1005,6 +1026,10 @@ export class SmlDocument {
 	static fromBase64String(base64Str: string): SmlDocument {
 		const bytes = Base64String.toBytes(base64Str)
 		return this.fromBytes(bytes)
+	}
+
+	static fromBinarySml(bytes: Uint8Array): SmlDocument {
+		return BinarySmlDecoder.decode(bytes)
 	}
 }
 
@@ -1076,6 +1101,29 @@ export abstract class SmlSerializer {
 	static internalSerializeValuesWhitespacesAndComment(values: (string | null)[], whitespaces: (string | null)[] | null, comment: string | null, lines: string[], level: number, defaultIndentation: string | null) {
 		whitespaces = SmlSerializer.getWhitespaces(whitespaces, level, defaultIndentation)
 		lines.push(WsvSerializer.internalSerializeValuesWhitespacesAndComment(values, whitespaces, comment))
+	}
+}
+
+// ----------------------------------------------------------------------
+
+export abstract class SmlJaggedArraySerializer {
+	private static _serializeElement(element: SmlElement, endKeyword: string | null, jaggedArray: (string | null)[][]) {
+		jaggedArray.push([element.name])
+		for (const node of element.nodes) {
+			if (node.isAttribute()) {
+				const attribute = node as SmlAttribute
+				jaggedArray.push([attribute.name, ...attribute.values])
+			} else if (node.isElement()) {
+				this._serializeElement(node as SmlElement, endKeyword, jaggedArray)
+			}
+		}
+		jaggedArray.push([endKeyword])
+	}
+
+	static serialzeElement(element: SmlElement, endKeyword: string | null): (string | null)[][] {
+		const result: (string | null)[][] = []
+		this._serializeElement(element, endKeyword, result)
+		return result
 	}
 }
 
@@ -1553,5 +1601,182 @@ export abstract class SmlParser {
 			}
 		}
 		throw new SmlParserError(lines.length-1, SmlParser.endKeywordCouldNotBeDetected)
+	}
+}
+
+// ----------------------------------------------------------------------
+
+export abstract class BinarySmlUtil {
+	static getPreambleVersion1(): Uint8Array {
+		return new Uint8Array([0x42, 0x53, 0x4D, 0x4C, 0x31])
+	}
+
+	static readonly elementEndByte = 0b00000001
+	static readonly emptyElementNameByte = 0b00000101
+	static readonly emptyAttributeNameByte = 0b00000011
+
+	static readonly attributeEndByte = 0b00000001
+	static readonly nullValueByte = 0b00000011
+}
+
+// ----------------------------------------------------------------------
+
+export abstract class BinarySmlEncoder {
+	private static _encodeAttribute(attribute: SmlAttribute, builder: Uint8ArrayBuilder) {
+		if (attribute.name.length === 0) {
+			builder.pushByte(BinarySmlUtil.emptyAttributeNameByte)
+		} else {
+			const attributeNameEncoded = Utf16String.toUtf8Bytes(attribute.name)
+			builder.pushVarInt56((attributeNameEncoded.length << 1) | 1)
+			builder.push(attributeNameEncoded)
+		}
+		attribute.internalBinarySerialize(builder)
+	}
+
+	private static _encodeElement(element: SmlElement, builder: Uint8ArrayBuilder, isRootElement: boolean) {
+		if (element.name.length === 0) {
+			builder.pushByte(BinarySmlUtil.emptyElementNameByte)
+		} else {
+			const elementNameEncoded = Utf16String.toUtf8Bytes(element.name)
+			builder.pushVarInt56((elementNameEncoded.length + 1) << 1)
+			builder.push(elementNameEncoded)
+		}
+
+		for (const node of element.nodes) {
+			if (node.isAttribute()) {
+				this._encodeAttribute(node as SmlAttribute, builder)
+			} else if (node.isElement()) {
+				this._encodeElement(node as SmlElement, builder, false)
+			}
+		}
+
+		if (isRootElement === false) {
+			builder.pushByte(BinarySmlUtil.elementEndByte)
+		}
+	}
+
+	static encodeElement(element: SmlElement, isRootElement: boolean = false): Uint8Array {
+		const builder: Uint8ArrayBuilder = new Uint8ArrayBuilder()
+		if (isRootElement === true) {
+			const preamble = BinarySmlUtil.getPreambleVersion1()
+			builder.push(preamble)	
+		}
+		this._encodeElement(element, builder, isRootElement)
+		return builder.getArray()
+	}
+
+	static encodeAttribute(attribute: SmlAttribute): Uint8Array {
+		const builder: Uint8ArrayBuilder = new Uint8ArrayBuilder()
+		this._encodeAttribute(attribute, builder)
+		return builder.getArray()
+	}
+
+	static encodeNode(node: SmlNode): Uint8Array {
+		if (node.isAttribute()) { return this.encodeAttribute(node as SmlAttribute) }
+		else if (node.isElement()) { return this.encodeElement(node as SmlElement) }
+		else return new Uint8Array(0)
+	}
+
+	static encodeNodes(nodes: SmlNode[]): Uint8Array {
+		const builder: Uint8ArrayBuilder = new Uint8ArrayBuilder()
+		for (const node of nodes) {
+			if (node.isAttribute()) {
+				this._encodeAttribute(node as SmlAttribute, builder)
+			} else if (node.isElement()) {
+				this._encodeElement(node as SmlElement, builder, false)
+			}
+		}
+		return builder.getArray()
+	}
+
+	static encode(document: SmlDocument): Uint8Array {
+		return this.encodeElement(document.root, true)
+	}
+}
+
+// ----------------------------------------------------------------------
+
+export class NoBinarySmlPreambleError extends Error {
+	constructor() {
+		super("Document does not have a BinarySML preamble")
+	}
+}
+
+// ----------------------------------------------------------------------
+
+export class InvalidBinarySmlError extends Error {
+	constructor() {
+		super("Invalid BinarySML")
+	}
+}
+
+// ----------------------------------------------------------------------
+
+export abstract class BinarySmlDecoder {
+	static getVersion(bytes: Uint8Array): string {
+		const version = this.getVersionOrNull(bytes)
+		if (version === null) {
+			throw new NoBinarySmlPreambleError()
+		}
+		return version
+	}
+
+	static getVersionOrNull(bytes: Uint8Array): string | null {
+		if (bytes.length < 5 ||
+			bytes[0] !== 0x42 ||
+			bytes[1] !== 0x53 ||
+			bytes[2] !== 0x4D ||
+			bytes[3] !== 0x4C) {
+			return null
+		}
+		return String.fromCharCode(bytes[4])
+	}
+
+	private static _decodeAttribute(reader: Uint8ArrayReader, attributeVarInt: number): SmlAttribute {
+		const attributeName = attributeVarInt === 0b1 ? "" : reader.readString(attributeVarInt >> 1)
+
+		const values: (string | null)[] = []
+		while (reader.hasBytes) {
+			const wasAttributeEnd = BinaryWsvDecoder.decodeValue(reader, values)
+			if (wasAttributeEnd === true) {
+				return new SmlAttribute(attributeName, values)
+			}
+		}
+		throw new InvalidBinarySmlError() 
+	}
+
+	private static _decodeElement(reader: Uint8ArrayReader, isRootElement: boolean, elementVarInt: number): SmlElement {
+		const elementName = elementVarInt === 0b10 ? "" : reader.readString((elementVarInt >> 1) - 1)
+		const element = new SmlElement(elementName)
+		
+		while (reader.hasBytes) {
+			const varInt = reader.readVarInt56()
+			if (varInt === 0) {
+				if (isRootElement === true) { throw new InvalidBinarySmlError() }
+				return element
+			} else if ((varInt & 0b1) === 0) {
+				const childElement = this._decodeElement(reader, false, varInt)
+				element.addNode(childElement)
+			} else {
+				const childAttribute = this._decodeAttribute(reader, varInt)
+				element.addNode(childAttribute)
+			}
+		}
+		if (isRootElement === false) { throw new InvalidBinarySmlError() }
+		return element
+	}
+
+	static decode(bytes: Uint8Array): SmlDocument {
+		const version = this.getVersion(bytes)
+		if (version !== "1") {
+			throw new Error(`Not supported BinarySML version '${version}'`)
+		}
+		const reader = new Uint8ArrayReader(bytes, 5)
+		const varInt = reader.readVarInt56()
+		if ((varInt & 0b1) === 1) { throw new InvalidBinarySmlError() }
+		const rootElement = this._decodeElement(reader, true, varInt)
+		
+		if (reader.hasBytes) { throw new InvalidBinarySmlError() }
+		return new SmlDocument(rootElement)
 	}
 }

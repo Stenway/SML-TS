@@ -1,7 +1,7 @@
 ﻿/* eslint-disable no-irregular-whitespace */
 import { ReliableTxtEncoding } from "@stenway/reliabletxt"
 import { WsvDocument, WsvLine } from "@stenway/wsv"
-import { SmlAttribute, SmlDocument, SmlElement, SmlEmptyNode, SmlNamedNode, SmlNode, SmlParser, SmlParserError, SyncWsvDocumentLineIterator, SyncWsvJaggedArrayLineIterator, WsvLineIterator } from "../src/sml.js"
+import { BinarySmlDecoder, BinarySmlEncoder, SmlAttribute, SmlDocument, SmlElement, SmlEmptyNode, SmlNamedNode, SmlNode, SmlParser, SmlParserError, SyncWsvDocumentLineIterator, SyncWsvJaggedArrayLineIterator, WsvLineIterator } from "../src/sml.js"
 
 describe("SmlNode.isElement + isAttribute + isEmptyNode + isNamedNode", () => {
 	test.each([
@@ -1504,6 +1504,18 @@ test("SmlElement.parse", () => {
 	expect(element.toString()).toEqual("Test\nAttribute1 10\nEnd")
 })
 
+test("SmlElement.toJaggedArray", () => {
+	const element = SmlElement.parse(`Root\n Attribute 1 2\n\n  SubElement\n  End\nEnd`, false)
+	const jaggedArray = element.toJaggedArray()
+	expect(jaggedArray).toEqual([["Root"], ["Attribute", "1", "2"], ["SubElement"], ["End"], ["End"]])
+})
+
+test("SmlDocument.toJaggedArray (minified)", () => {
+	const element = SmlElement.parse(`Root\n Attribute 1 2\nEnd`, false)
+	const jaggedArray = element.toJaggedArray(true)
+	expect(jaggedArray).toEqual([["Root"], ["Attribute", "1", "2"], [null]])
+})
+
 // ----------------------------------------------------------------------
 
 describe("SmlDocument Constructor", () => {
@@ -1686,6 +1698,38 @@ test("SmlDocument.toJaggedArray + fromJaggedArray", () => {
 	expect(document2.toString()).toEqual(document.toString())
 })
 
+test("SmlDocument.toJaggedArray (minified)", () => {
+	const document = SmlDocument.parse(`Root\n Attribute 1 2\nEnd`, false)
+	const jaggedArray = document.toJaggedArray(true)
+	expect(jaggedArray).toEqual([["Root"], ["Attribute", "1", "2"], [null]])
+})
+
+describe("SmlDocument.toBinarySml + fromBinarySml", () => {
+	test.each([
+		["A\nEnd"],
+		["A\nB\nEnd\nEnd"],
+		[`MyRootElement\n  MyFirstAttribute "123"\n  MySecondAttribute "10" "20" "30" "40" "50"\nEnd`],
+	])(
+		"Given %p",
+		(input) => {
+			const document = SmlDocument.parse(input)
+			const bytes = document.toBinarySml()
+
+			const decodedDocument = SmlDocument.fromBinarySml(bytes)
+			expect(document.toString(false)).toEqual(decodedDocument.toString(false))
+		}
+	)
+})
+
+test("SmlDocument.toBinarySml + fromBinarySml", () => {
+	const document = SmlDocument.parse("A\nEnd")
+	const bytes = document.toBinarySml()
+	expect(bytes).toEqual(new Uint8Array([0x42, 0x53, 0x4D, 0x4C, 0x31, 0b00001001, 0x41]))
+
+	const decodedDocument = SmlDocument.fromBinarySml(bytes)
+	expect(document.toString()).toEqual(decodedDocument.toString())
+})
+
 // ----------------------------------------------------------------------
 
 test("SmlParserError.constructor", () => {
@@ -1825,4 +1869,164 @@ describe("SmlParser Async", () => {
 			await expect(async () => await SmlParser.readNode(iterator, rootElement)).rejects.toThrowError()
 		}
 	)
+})
+
+// ----------------------------------------------------------------------
+
+const elementEndByte = 0b00000001
+const emptyElementNameByte = 0b00000101
+const emptyAttributeNameByte = 0b00000011
+const attributeEndByte = 0b00000001
+const nullValueByte = 0b00000011
+const charA = 0x41
+const charE = 0x45
+
+// ----------------------------------------------------------------------
+
+describe("BinarySmlEncoder.encodeElement", () => {
+	test.each([
+		["A\nEnd", true, [0x42, 0x53, 0x4D, 0x4C, 0x31, 0b00001001, charA]],
+		[`""\nEnd`, true, [0x42, 0x53, 0x4D, 0x4C, 0x31, emptyElementNameByte]],
+		["A\nEnd", false, [0b00001001, charA, elementEndByte]],
+		["A\nEnd123", false, [0b00001001, charA, elementEndByte]],
+		[`""\nEnd`, false, [emptyElementNameByte, elementEndByte]],
+		[`""\n"" 1\nEnd`, false, [emptyElementNameByte, emptyAttributeNameByte, 0b00000111, 0x31, attributeEndByte, elementEndByte]],
+		[`""\n"" 1 "" -\nEnd`, false, [emptyElementNameByte, emptyAttributeNameByte, 0b00000111, 0x31, 0b00000101, nullValueByte, attributeEndByte, elementEndByte]],
+		["E\nA 1\nEnd", false, [0b00001001, charE, 0b00000111, charA, 0b00000111, 0x31, 0b00000001, elementEndByte]],
+		["E\nA 1 2\nEnd", false, [0b00001001, charE, 0b00000111, charA, 0b00000111, 0x31, 0b00000111, 0x32, attributeEndByte, elementEndByte]],
+		["E\nA 1\nA 2\nEnd", false, [0b00001001, charE, 0b00000111, charA, 0b00000111, 0x31, attributeEndByte, 0b00000111, charA, 0b00000111, 0x32, attributeEndByte, elementEndByte]],
+		["E\nA 1\nE\nEnd\nA 2\nEnd", false, [0b00001001, charE, 0b00000111, charA, 0b00000111, 0x31, attributeEndByte, 0b00001001, charE, elementEndByte, 0b00000111, charA, 0b00000111, 0x32, attributeEndByte, elementEndByte]],
+		["E\nA 1\nE\nA 2\nEnd\nA 3\nEnd", false, [0b00001001, charE, 0b00000111, charA, 0b00000111, 0x31, attributeEndByte, 0b00001001, charE, 0b00000111, charA, 0b00000111, 0x32, attributeEndByte, elementEndByte, 0b00000111, charA, 0b00000111, 0x33, attributeEndByte, elementEndByte]],
+	])(
+		"Given %p and %p returns %j",
+		(input1, input2, output) => {
+			const document = SmlDocument.parse(input1)
+			const bytes = BinarySmlEncoder.encodeElement(document.root, input2)
+			expect(bytes).toEqual(new Uint8Array(output))
+		}
+	)
+})
+
+test("BinarySmlEncoder.encodeAttribute", () => {
+	const attribute = new SmlAttribute("A", [null])
+	const bytes = BinarySmlEncoder.encodeAttribute(attribute)
+	expect(bytes).toEqual(new Uint8Array([0b0000111, 0x41, 0b00000011, 0b00000001]))
+})
+
+test("BinarySmlEncoder.encodeElement", () => {
+	const element = SmlElement.parse("A\nEnd")
+	const bytes = BinarySmlEncoder.encodeElement(element)
+	expect(bytes).toEqual(new Uint8Array([0b00001001, 0x41, elementEndByte]))
+})
+
+describe("BinarySmlEncoder.encodeNode + encodeNodes", () => {
+	test.each([
+		[new SmlElement("A"), [0b00001001, charA, elementEndByte]],
+		[new SmlAttribute("A", [null]), [0b00000111, charA, nullValueByte, attributeEndByte]],
+		[new SmlEmptyNode(), []],
+	])(
+		"Given %p returns %j",
+		(input, output) => {
+			const bytes = BinarySmlEncoder.encodeNode(input)
+			expect(bytes).toEqual(new Uint8Array(output))
+
+			const bytes2 = BinarySmlEncoder.encodeNodes([input])
+			expect(bytes2).toEqual(new Uint8Array(output))
+		}
+	)
+})
+
+test("BinarySmlEncoder.encode", () => {
+	const document = SmlDocument.parse("A\nEnd")
+	const bytes = BinarySmlEncoder.encode(document)
+	expect(bytes).toEqual(new Uint8Array([0x42, 0x53, 0x4D, 0x4C, 0x31, 0b00001001, 0x41]))
+})
+
+// ----------------------------------------------------------------------
+
+describe("BinarySmlDecoder.getVersion", () => {
+	test.each([
+		[[0x42, 0x53, 0x4D, 0x4C, 0x31], "1"],
+		[[0x42, 0x53, 0x4D, 0x4C, 0x31], "1"],
+		[[0x42, 0x53, 0x4D, 0x4C, 0x32], "2"],
+		[[0x42, 0x53, 0x4D, 0x4C, 0x31, 0x00], "1"],
+	])(
+		"Given %p returns %p",
+		(input, output) => {
+			const version = BinarySmlDecoder.getVersion(new Uint8Array(input))
+			expect(version).toEqual(output)
+		}
+	)
+
+	test.each([
+		[[0x43, 0x53, 0x4D, 0x4C, 0x31]],
+		[[0x42, 0x54, 0x4D, 0x4C, 0x31]],
+		[[0x42, 0x53, 0x4E, 0x4C, 0x31]],
+		[[0x42, 0x53, 0x4D, 0x4D, 0x31]],
+		[[0x42, 0x53, 0x4D, 0x4C]],
+		[[0x42, 0x53, 0x4D]],
+		[[0x42, 0x53]],
+		[[0x42]],
+		[[]],
+	])(
+		"Given %p throws",
+		(input) => {
+			expect(() => BinarySmlDecoder.getVersion(new Uint8Array(input))).toThrow()
+		}
+	)
+})
+
+describe("BinarySmlDecoder.getVersionOrNull", () => {
+	test.each([
+		[[0x42, 0x53, 0x4D, 0x4C, 0x31], "1"],
+		[[0x42, 0x53, 0x4D, 0x4C, 0x31], "1"],
+		[[0x42, 0x53, 0x4D, 0x4C, 0x32], "2"],
+		[[0x42, 0x53, 0x4D, 0x4C, 0x31, 0x00], "1"],
+		[[0x43, 0x53, 0x4D, 0x4C, 0x31], null],
+		[[0x42, 0x54, 0x4D, 0x4C, 0x31], null],
+		[[0x42, 0x53, 0x4E, 0x4C, 0x31], null],
+		[[0x42, 0x53, 0x4D, 0x4D, 0x31], null],
+		[[0x42, 0x53, 0x4D, 0x4C], null],
+		[[0x42, 0x53, 0x4D], null],
+		[[0x42, 0x53], null],
+		[[0x42], null],
+		[[], null],
+	])(
+		"Given %p returns %p",
+		(input, output) => {
+			const version = BinarySmlDecoder.getVersionOrNull(new Uint8Array(input))
+			expect(version).toEqual(output)
+		}
+	)
+})
+
+describe("BinarySmlDecoder.decode", () => {
+	test.each([
+		[[0b00001001, 0x41], "A\n-"],
+		[[emptyElementNameByte], `""\n-`],
+		[[0b00001001, 0x41, 0b00001001, 0x42, elementEndByte], "A\nB\n-\n-"],
+		[[0b00001001, 0x41, emptyAttributeNameByte, nullValueByte, attributeEndByte], `A\n"" -\n-`],
+	])(
+		"Given %p returns %p",
+		(input, output) => {
+			const document = BinarySmlDecoder.decode(new Uint8Array([0x42, 0x53, 0x4D, 0x4C, 0x31, ...input]))
+			expect(document.toMinifiedString()).toEqual(output)
+		}
+	)
+
+	test.each([
+		[[0b00001011, 0x41]],
+		[[0b00001001, 0x41, elementEndByte]],
+		[[0b00001001, 0x41, 0b00001001, 0x42]],
+		[[0b00001001, 0x41, emptyAttributeNameByte, nullValueByte]],
+	])(
+		"Given %p throws",
+		(input) => {
+			expect(() => BinarySmlDecoder.decode(new Uint8Array([0x42, 0x53, 0x4D, 0x4C, 0x31, ...input]))).toThrowError()
+		}
+	)
+
+	test("BinarySmlDecoder.decode throws", () => {
+		expect(() => BinarySmlDecoder.decode(new Uint8Array([0x42, 0x53, 0x4D, 0x4C, 0x32]))).toThrowError()
+	})
 })
