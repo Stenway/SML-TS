@@ -1,6 +1,6 @@
 /* (C) Stefan John / Stenway / SimpleML.com / 2023 */
 import { Base64String, ReliableTxtDocument, ReliableTxtEncoding, ReliableTxtLines, Utf16String } from "@stenway/reliabletxt";
-import { WsvStringUtil, WsvDocument, WsvLine, WsvSerializer, WsvValue, Uint8ArrayBuilder, Uint8ArrayReader, BinaryWsvDecoder } from "@stenway/wsv";
+import { WsvStringUtil, WsvDocument, WsvLine, WsvSerializer, WsvValue, Uint8ArrayBuilder } from "@stenway/wsv";
 // ----------------------------------------------------------------------
 export class SmlNode {
     constructor() {
@@ -199,14 +199,14 @@ export class SmlAttribute extends SmlNamedNode {
         }
     }
     internalBinarySerialize(builder) {
+        builder.pushUtf8String(this.name);
         for (const value of this._values) {
+            builder.pushByte(BinarySmlUtil.valueSeparatorByte);
             if (value === null) {
                 builder.pushByte(BinarySmlUtil.nullValueByte);
             }
             else {
-                const strValueEncoded = Utf16String.toUtf8Bytes(value);
-                builder.pushVarInt56(strValueEncoded.length + 2);
-                builder.push(strValueEncoded);
+                builder.pushUtf8String(value);
             }
         }
         builder.pushByte(BinarySmlUtil.attributeEndByte);
@@ -1027,9 +1027,13 @@ export class SmlDocument {
     toMinifiedString() {
         return this.root.toMinifiedString();
     }
-    getBytes(preserveWhitespacesAndComments = true) {
+    toBytes(preserveWhitespacesAndComments = true) {
         const str = this.toString(preserveWhitespacesAndComments);
-        return new ReliableTxtDocument(str, this.encoding).getBytes();
+        return new ReliableTxtDocument(str, this.encoding).toBytes();
+    }
+    toMinifiedBytes() {
+        const str = this.toMinifiedString();
+        return new ReliableTxtDocument(str, this.encoding).toBytes();
     }
     toBase64String(preserveWhitespacesAndComments = true) {
         const str = this.toString(preserveWhitespacesAndComments);
@@ -1550,42 +1554,25 @@ SmlParser.endKeywordCouldNotBeDetected = "End keyword could not be detected";
 // ----------------------------------------------------------------------
 export class BinarySmlUtil {
     static getPreambleVersion1() {
-        return new Uint8Array([0x42, 0x53, 0x4D, 0x4C, 0x31]);
+        return new Uint8Array([0x42, 0x53, 0x31]);
     }
 }
-BinarySmlUtil.elementEndByte = 0b00000001;
-BinarySmlUtil.emptyElementNameByte = 0b00000101;
-BinarySmlUtil.emptyAttributeNameByte = 0b00000011;
-BinarySmlUtil.attributeEndByte = 0b00000001;
-BinarySmlUtil.nullValueByte = 0b00000011;
+BinarySmlUtil.elementStartByte = 0b11111111;
+BinarySmlUtil.elementEndByte = 0b11111110;
+BinarySmlUtil.attributeEndByte = 0b11111101;
+BinarySmlUtil.valueSeparatorByte = 0b11111100;
+BinarySmlUtil.nullValueByte = 0b11111011;
 // ----------------------------------------------------------------------
 export class BinarySmlEncoder {
-    static _encodeAttribute(attribute, builder) {
-        if (attribute.name.length === 0) {
-            builder.pushByte(BinarySmlUtil.emptyAttributeNameByte);
-        }
-        else {
-            const attributeNameEncoded = Utf16String.toUtf8Bytes(attribute.name);
-            builder.pushVarInt56((attributeNameEncoded.length << 1) | 1);
-            builder.push(attributeNameEncoded);
-        }
-        attribute.internalBinarySerialize(builder);
-    }
-    static _encodeElement(element, builder, isRootElement) {
-        if (element.name.length === 0) {
-            builder.pushByte(BinarySmlUtil.emptyElementNameByte);
-        }
-        else {
-            const elementNameEncoded = Utf16String.toUtf8Bytes(element.name);
-            builder.pushVarInt56((elementNameEncoded.length + 1) << 1);
-            builder.push(elementNameEncoded);
-        }
+    static internalEncodeElement(element, builder, isRootElement) {
+        builder.pushUtf8String(element.name);
+        builder.pushByte(BinarySmlUtil.elementStartByte);
         for (const node of element.nodes) {
             if (node.isAttribute()) {
-                this._encodeAttribute(node, builder);
+                node.internalBinarySerialize(builder);
             }
             else if (node.isElement()) {
-                this._encodeElement(node, builder, false);
+                this.internalEncodeElement(node, builder, false);
             }
         }
         if (isRootElement === false) {
@@ -1598,13 +1585,21 @@ export class BinarySmlEncoder {
             const preamble = BinarySmlUtil.getPreambleVersion1();
             builder.push(preamble);
         }
-        this._encodeElement(element, builder, isRootElement);
-        return builder.getArray();
+        this.internalEncodeElement(element, builder, isRootElement);
+        return builder.toArray();
     }
     static encodeAttribute(attribute) {
         const builder = new Uint8ArrayBuilder();
-        this._encodeAttribute(attribute, builder);
-        return builder.getArray();
+        attribute.internalBinarySerialize(builder);
+        return builder.toArray();
+    }
+    static internalEncodeNode(node, builder) {
+        if (node.isAttribute()) {
+            node.internalBinarySerialize(builder);
+        }
+        else if (node.isElement()) {
+            this.internalEncodeElement(node, builder, false);
+        }
     }
     static encodeNode(node) {
         if (node.isAttribute()) {
@@ -1616,17 +1611,27 @@ export class BinarySmlEncoder {
         else
             return new Uint8Array(0);
     }
+    static internalEncodeNodes(nodes, builder) {
+        for (const node of nodes) {
+            if (node.isAttribute()) {
+                node.internalBinarySerialize(builder);
+            }
+            else if (node.isElement()) {
+                this.internalEncodeElement(node, builder, false);
+            }
+        }
+    }
     static encodeNodes(nodes) {
         const builder = new Uint8ArrayBuilder();
         for (const node of nodes) {
             if (node.isAttribute()) {
-                this._encodeAttribute(node, builder);
+                node.internalBinarySerialize(builder);
             }
             else if (node.isElement()) {
-                this._encodeElement(node, builder, false);
+                this.internalEncodeElement(node, builder, false);
             }
         }
-        return builder.getArray();
+        return builder.toArray();
     }
     static encode(document) {
         return this.encodeElement(document.root, true);
@@ -1645,6 +1650,175 @@ export class InvalidBinarySmlError extends Error {
     }
 }
 // ----------------------------------------------------------------------
+export class Uint8ArrayReader {
+    constructor(buffer, offset) {
+        this.buffer = buffer;
+        this.offset = offset;
+        this.utf8Decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+    }
+    reset(buffer, offset) {
+        this.buffer = buffer;
+        this.offset = offset;
+    }
+    get hasBytes() {
+        return this.offset < this.buffer.length;
+    }
+    readString(startOffset, endOffset) {
+        const bytes = this.buffer.subarray(startOffset, endOffset);
+        try {
+            return this.utf8Decoder.decode(bytes);
+        }
+        catch (error) {
+            throw new InvalidBinarySmlError();
+        }
+    }
+    readNonEmptyStringValue(values) {
+        const startOffset = this.offset;
+        let wasEnd = false;
+        this.offset++;
+        for (;;) {
+            if (this.offset >= this.buffer.length) {
+                throw new InvalidBinarySmlError();
+            }
+            const currentByte = this.buffer[this.offset];
+            this.offset++;
+            if (currentByte === BinarySmlUtil.attributeEndByte) {
+                wasEnd = true;
+                break;
+            }
+            else if (currentByte === BinarySmlUtil.valueSeparatorByte) {
+                break;
+            }
+        }
+        const value = this.readString(startOffset, this.offset - 1);
+        values.push(value);
+        return wasEnd;
+    }
+    readAttribute(name) {
+        const values = [];
+        for (;;) {
+            if (this.offset >= this.buffer.length) {
+                throw new InvalidBinarySmlError();
+            }
+            const peekByte = this.buffer[this.offset];
+            if (peekByte === BinarySmlUtil.nullValueByte) {
+                this.offset++;
+                values.push(null);
+                if (this.offset >= this.buffer.length) {
+                    throw new InvalidBinarySmlError();
+                }
+                const currentByte = this.buffer[this.offset];
+                this.offset++;
+                if (currentByte === BinarySmlUtil.attributeEndByte) {
+                    break;
+                }
+                else if (currentByte !== BinarySmlUtil.valueSeparatorByte) {
+                    throw new InvalidBinarySmlError();
+                }
+            }
+            else if (peekByte === BinarySmlUtil.valueSeparatorByte) {
+                this.offset++;
+                values.push("");
+            }
+            else if (peekByte === BinarySmlUtil.attributeEndByte) {
+                this.offset++;
+                values.push("");
+                break;
+            }
+            else {
+                const wasEnd = this.readNonEmptyStringValue(values);
+                if (wasEnd === true) {
+                    break;
+                }
+            }
+        }
+        const attribute = new SmlAttribute(name, values);
+        return attribute;
+    }
+    readElement(name, isRootElement) {
+        const element = new SmlElement(name);
+        for (;;) {
+            const result = this.read(false);
+            if (result === undefined) {
+                if (isRootElement === false) {
+                    throw new InvalidBinarySmlError();
+                }
+                break;
+            }
+            else if (result === null) {
+                if (isRootElement === true) {
+                    throw new InvalidBinarySmlError();
+                }
+                break;
+            }
+            else {
+                element.addNode(result);
+            }
+        }
+        return element;
+    }
+    read(isRootElement) {
+        if (this.offset >= this.buffer.length) {
+            return undefined;
+        }
+        const peekByte = this.buffer[this.offset];
+        if (peekByte === BinarySmlUtil.elementEndByte) {
+            this.offset++;
+            return null;
+        }
+        else if (peekByte === BinarySmlUtil.elementStartByte) {
+            this.offset++;
+            return this.readElement("", isRootElement);
+        }
+        else if (peekByte === BinarySmlUtil.valueSeparatorByte) {
+            this.offset++;
+            return this.readAttribute("");
+        }
+        const startOffset = this.offset;
+        this.offset++;
+        let wasElement = false;
+        for (;;) {
+            if (this.offset >= this.buffer.length) {
+                throw new InvalidBinarySmlError();
+            }
+            const currentByte = this.buffer[this.offset];
+            this.offset++;
+            if (currentByte === BinarySmlUtil.elementStartByte) {
+                wasElement = true;
+                break;
+            }
+            else if (currentByte === BinarySmlUtil.valueSeparatorByte) {
+                break;
+            }
+        }
+        const name = this.readString(startOffset, this.offset - 1);
+        if (wasElement === true) {
+            return this.readElement(name, isRootElement);
+        }
+        else {
+            if (isRootElement === true) {
+                throw new InvalidBinarySmlError();
+            }
+            return this.readAttribute(name);
+        }
+    }
+    readRootElementStart() {
+        const startOffset = this.offset;
+        for (;;) {
+            if (this.offset >= this.buffer.length) {
+                throw new InvalidBinarySmlError();
+            }
+            const currentByte = this.buffer[this.offset];
+            this.offset++;
+            if (currentByte === BinarySmlUtil.elementStartByte) {
+                break;
+            }
+        }
+        const name = this.readString(startOffset, this.offset - 1);
+        return name;
+    }
+}
+// ----------------------------------------------------------------------
 export class BinarySmlDecoder {
     static getVersion(bytes) {
         const version = this.getVersionOrNull(bytes);
@@ -1654,63 +1828,63 @@ export class BinarySmlDecoder {
         return version;
     }
     static getVersionOrNull(bytes) {
-        if (bytes.length < 5 ||
+        if (bytes.length < 3 ||
             bytes[0] !== 0x42 ||
-            bytes[1] !== 0x53 ||
-            bytes[2] !== 0x4D ||
-            bytes[3] !== 0x4C) {
+            bytes[1] !== 0x53) {
             return null;
         }
-        return String.fromCharCode(bytes[4]);
+        return String.fromCharCode(bytes[2]);
     }
-    static _decodeAttribute(reader, attributeVarInt) {
-        const attributeName = attributeVarInt === 0b1 ? "" : reader.readString(attributeVarInt >> 1);
-        const values = [];
-        while (reader.hasBytes) {
-            const wasAttributeEnd = BinaryWsvDecoder.decodeValue(reader, values);
-            if (wasAttributeEnd === true) {
-                return new SmlAttribute(attributeName, values);
+    static internalGetNodeEndIndex(bytes, startIndex) {
+        let endIndex = -1;
+        let elementStack = 0;
+        for (let i = startIndex; i < bytes.length; i++) {
+            const currentByte = bytes[i];
+            if (currentByte === BinarySmlUtil.elementStartByte) {
+                elementStack++;
             }
-        }
-        throw new InvalidBinarySmlError();
-    }
-    static _decodeElement(reader, isRootElement, elementVarInt) {
-        const elementName = elementVarInt === 0b10 ? "" : reader.readString((elementVarInt >> 1) - 1);
-        const element = new SmlElement(elementName);
-        while (reader.hasBytes) {
-            const varInt = reader.readVarInt56();
-            if (varInt === 0) {
-                if (isRootElement === true) {
+            else if (currentByte === BinarySmlUtil.elementEndByte) {
+                if (elementStack === 0) {
                     throw new InvalidBinarySmlError();
                 }
-                return element;
+                elementStack--;
+                if (elementStack === 0) {
+                    endIndex = i;
+                    break;
+                }
             }
-            else if ((varInt & 0b1) === 0) {
-                const childElement = this._decodeElement(reader, false, varInt);
-                element.addNode(childElement);
-            }
-            else {
-                const childAttribute = this._decodeAttribute(reader, varInt);
-                element.addNode(childAttribute);
+            else if (currentByte === BinarySmlUtil.attributeEndByte) {
+                if (elementStack === 0) {
+                    endIndex = i;
+                    break;
+                }
             }
         }
-        if (isRootElement === false) {
+        return endIndex;
+    }
+    static internalDecodeNode(reader) {
+        const result = reader.read(false);
+        if (result === undefined) {
+            return null;
+        }
+        else if (result === null) {
             throw new InvalidBinarySmlError();
         }
-        return element;
+        else {
+            if (reader.hasBytes) {
+                throw new InvalidBinarySmlError();
+            }
+            return result;
+        }
     }
     static decode(bytes) {
         const version = this.getVersion(bytes);
         if (version !== "1") {
             throw new Error(`Not supported BinarySML version '${version}'`);
         }
-        const reader = new Uint8ArrayReader(bytes, 5);
-        const varInt = reader.readVarInt56();
-        if ((varInt & 0b1) === 1) {
-            throw new InvalidBinarySmlError();
-        }
-        const rootElement = this._decodeElement(reader, true, varInt);
-        if (reader.hasBytes) {
+        const reader = new Uint8ArrayReader(bytes, 3);
+        const rootElement = reader.read(true);
+        if (rootElement === undefined || rootElement === null || reader.hasBytes) {
             throw new InvalidBinarySmlError();
         }
         return new SmlDocument(rootElement);

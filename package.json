@@ -1,6 +1,6 @@
 {
   "name": "@stenway/sml",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "type": "module",
   "description": "Serialize and deserialze SML documents",
   "homepage": "https://www.simpleml.com",
@@ -29,7 +29,7 @@
     "yaml",
     "binarysml",
     "bsml",
-    "varint56"
+    "bs1"
   ],
   "author": "Stefan John",
   "license": "MIT",
@@ -45,7 +45,7 @@
     "typescript": "^5.0.4"
   },
   "dependencies": {
-    "@stenway/reliabletxt": "^0.7.0",
-    "@stenway/wsv": "^0.7.0"
+    "@stenway/reliabletxt": "^0.8.0",
+    "@stenway/wsv": "^0.8.0"
   }
 }

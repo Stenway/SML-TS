@@ -1,7 +1,7 @@
 ﻿/* eslint-disable no-irregular-whitespace */
 import { ReliableTxtEncoding } from "@stenway/reliabletxt"
-import { WsvDocument, WsvLine } from "@stenway/wsv"
-import { BinarySmlDecoder, BinarySmlEncoder, SmlAttribute, SmlDocument, SmlElement, SmlEmptyNode, SmlNamedNode, SmlNode, SmlParser, SmlParserError, SyncWsvDocumentLineIterator, SyncWsvJaggedArrayLineIterator, WsvLineIterator } from "../src/sml.js"
+import { Uint8ArrayBuilder, WsvDocument, WsvLine } from "@stenway/wsv"
+import { BinarySmlDecoder, BinarySmlEncoder, SmlAttribute, SmlDocument, SmlElement, SmlEmptyNode, SmlNamedNode, SmlNode, SmlParser, SmlParserError, SyncWsvDocumentLineIterator, SyncWsvJaggedArrayLineIterator, Uint8ArrayReader, WsvLineIterator } from "../src/sml.js"
 
 describe("SmlNode.isElement + isAttribute + isEmptyNode + isNamedNode", () => {
 	test.each([
@@ -1229,6 +1229,11 @@ test("SmlElement.toMinifiedString + minify", () => {
 	expect(element.hasEndWhitespaces).toEqual(false)
 })
 
+test("SmlElement.toMinifiedBytes", () => {
+	const document = SmlDocument.parse(` A  \n End  `)
+	expect(document.toMinifiedBytes()).toEqual(new Uint8Array([0xEF, 0xBB, 0xBF, 0x41, 0x0A, 0x2D]))
+})
+
 describe("SmlElement.alignAttributes", () => {
 	test.each([
 		[" ", null, null, `Test\n\tA1            Va2       Val3 Value4 "Value 5" -\n\tAttibute2     "Value 2" Va3  -\n\t"Attribute 3" Value2    V3   V4     V5\nEnd`],
@@ -1579,7 +1584,7 @@ describe("SmlDocument.getBytes + fromBytes", () => {
 		(encoding, output) => {
 			const document = new SmlDocument(new SmlElement("A"))
 			document.encoding = encoding
-			const bytes = document.getBytes()
+			const bytes = document.toBytes()
 			expect(bytes).toEqual(new Uint8Array(output))
 			expect(document.toString()).toEqual("A\nEnd")
 
@@ -1709,6 +1714,9 @@ describe("SmlDocument.toBinarySml + fromBinarySml", () => {
 		["A\nEnd"],
 		["A\nB\nEnd\nEnd"],
 		[`MyRootElement\n  MyFirstAttribute "123"\n  MySecondAttribute "10" "20" "30" "40" "50"\nEnd`],
+		[`""\n""\nEnd\nEnd`],
+		[`""\n"" 1\n"" ""\n"" -\n"" "" - a\n"" - "" a\n"" - a ""\n""\n"" ""\n""\nEnd\n"" ""\nEnd\nEnd`],
+		[`E\nA 1\nA ""\nA -\nA "" - a\nA - "" a\nA - a ""\nE\nA ""\nE\nEnd\nA ""\nEnd\nEnd`],
 	])(
 		"Given %p",
 		(input) => {
@@ -1724,7 +1732,7 @@ describe("SmlDocument.toBinarySml + fromBinarySml", () => {
 test("SmlDocument.toBinarySml + fromBinarySml", () => {
 	const document = SmlDocument.parse("A\nEnd")
 	const bytes = document.toBinarySml()
-	expect(bytes).toEqual(new Uint8Array([0x42, 0x53, 0x4D, 0x4C, 0x31, 0b00001001, 0x41]))
+	expect(bytes).toEqual(new Uint8Array([0x42, 0x53, 0x31, aByte, elementStartByte]))
 
 	const decodedDocument = SmlDocument.fromBinarySml(bytes)
 	expect(document.toString()).toEqual(decodedDocument.toString())
@@ -1873,30 +1881,30 @@ describe("SmlParser Async", () => {
 
 // ----------------------------------------------------------------------
 
-const elementEndByte = 0b00000001
-const emptyElementNameByte = 0b00000101
-const emptyAttributeNameByte = 0b00000011
-const attributeEndByte = 0b00000001
-const nullValueByte = 0b00000011
-const charA = 0x41
-const charE = 0x45
+const elementStartByte = 0b11111111
+const elementEndByte = 0b11111110
+const attributeEndByte = 0b11111101
+const valueSeparatorByte = 0b11111100
+const nullValueByte = 0b11111011
+const aByte = 0x41
+const eByte = 0x45
 
 // ----------------------------------------------------------------------
 
 describe("BinarySmlEncoder.encodeElement", () => {
 	test.each([
-		["A\nEnd", true, [0x42, 0x53, 0x4D, 0x4C, 0x31, 0b00001001, charA]],
-		[`""\nEnd`, true, [0x42, 0x53, 0x4D, 0x4C, 0x31, emptyElementNameByte]],
-		["A\nEnd", false, [0b00001001, charA, elementEndByte]],
-		["A\nEnd123", false, [0b00001001, charA, elementEndByte]],
-		[`""\nEnd`, false, [emptyElementNameByte, elementEndByte]],
-		[`""\n"" 1\nEnd`, false, [emptyElementNameByte, emptyAttributeNameByte, 0b00000111, 0x31, attributeEndByte, elementEndByte]],
-		[`""\n"" 1 "" -\nEnd`, false, [emptyElementNameByte, emptyAttributeNameByte, 0b00000111, 0x31, 0b00000101, nullValueByte, attributeEndByte, elementEndByte]],
-		["E\nA 1\nEnd", false, [0b00001001, charE, 0b00000111, charA, 0b00000111, 0x31, 0b00000001, elementEndByte]],
-		["E\nA 1 2\nEnd", false, [0b00001001, charE, 0b00000111, charA, 0b00000111, 0x31, 0b00000111, 0x32, attributeEndByte, elementEndByte]],
-		["E\nA 1\nA 2\nEnd", false, [0b00001001, charE, 0b00000111, charA, 0b00000111, 0x31, attributeEndByte, 0b00000111, charA, 0b00000111, 0x32, attributeEndByte, elementEndByte]],
-		["E\nA 1\nE\nEnd\nA 2\nEnd", false, [0b00001001, charE, 0b00000111, charA, 0b00000111, 0x31, attributeEndByte, 0b00001001, charE, elementEndByte, 0b00000111, charA, 0b00000111, 0x32, attributeEndByte, elementEndByte]],
-		["E\nA 1\nE\nA 2\nEnd\nA 3\nEnd", false, [0b00001001, charE, 0b00000111, charA, 0b00000111, 0x31, attributeEndByte, 0b00001001, charE, 0b00000111, charA, 0b00000111, 0x32, attributeEndByte, elementEndByte, 0b00000111, charA, 0b00000111, 0x33, attributeEndByte, elementEndByte]],
+		["A\nEnd", true, [0x42, 0x53, 0x31, aByte, elementStartByte]],
+		[`""\nEnd`, true, [0x42, 0x53, 0x31, elementStartByte]],
+		["A\nEnd", false, [aByte, elementStartByte, elementEndByte]],
+		["A\nEnd123", false, [aByte, elementStartByte, elementEndByte]],
+		[`""\nEnd`, false, [elementStartByte, elementEndByte]],
+		[`""\n"" 1\nEnd`, false, [elementStartByte, valueSeparatorByte, 0x31, attributeEndByte, elementEndByte]],
+		[`""\n"" 1 "" -\nEnd`, false, [elementStartByte, valueSeparatorByte, 0x31, valueSeparatorByte, valueSeparatorByte, nullValueByte, attributeEndByte, elementEndByte]],
+		["E\nA 1\nEnd", false, [eByte, elementStartByte, aByte, valueSeparatorByte, 0x31, attributeEndByte, elementEndByte]],
+		["E\nA 1 2\nEnd", false, [eByte, elementStartByte, aByte, valueSeparatorByte, 0x31, valueSeparatorByte, 0x32, attributeEndByte, elementEndByte]],
+		["E\nA 1\nA 2\nEnd", false, [eByte, elementStartByte, aByte, valueSeparatorByte, 0x31, attributeEndByte, aByte, valueSeparatorByte, 0x32, attributeEndByte, elementEndByte]],
+		["E\nA 1\nE\nEnd\nA 2\nEnd", false, [eByte, elementStartByte, aByte, valueSeparatorByte, 0x31, attributeEndByte, eByte, elementStartByte, elementEndByte, aByte, valueSeparatorByte, 0x32, attributeEndByte, elementEndByte]],
+		["E\nA 1\nE\nA 2\nEnd\nA 3\nEnd", false, [eByte, elementStartByte, aByte, valueSeparatorByte, 0x31, attributeEndByte, eByte, elementStartByte, aByte, valueSeparatorByte, 0x32, attributeEndByte, elementEndByte, aByte, valueSeparatorByte, 0x33, attributeEndByte, elementEndByte]],
 	])(
 		"Given %p and %p returns %j",
 		(input1, input2, output) => {
@@ -1910,19 +1918,19 @@ describe("BinarySmlEncoder.encodeElement", () => {
 test("BinarySmlEncoder.encodeAttribute", () => {
 	const attribute = new SmlAttribute("A", [null])
 	const bytes = BinarySmlEncoder.encodeAttribute(attribute)
-	expect(bytes).toEqual(new Uint8Array([0b0000111, 0x41, 0b00000011, 0b00000001]))
+	expect(bytes).toEqual(new Uint8Array([aByte, valueSeparatorByte, nullValueByte, attributeEndByte]))
 })
 
 test("BinarySmlEncoder.encodeElement", () => {
 	const element = SmlElement.parse("A\nEnd")
 	const bytes = BinarySmlEncoder.encodeElement(element)
-	expect(bytes).toEqual(new Uint8Array([0b00001001, 0x41, elementEndByte]))
+	expect(bytes).toEqual(new Uint8Array([aByte, elementStartByte, elementEndByte]))
 })
 
 describe("BinarySmlEncoder.encodeNode + encodeNodes", () => {
 	test.each([
-		[new SmlElement("A"), [0b00001001, charA, elementEndByte]],
-		[new SmlAttribute("A", [null]), [0b00000111, charA, nullValueByte, attributeEndByte]],
+		[new SmlElement("A"), [aByte, elementStartByte, elementEndByte]],
+		[new SmlAttribute("A", [null]), [aByte, valueSeparatorByte, nullValueByte, attributeEndByte]],
 		[new SmlEmptyNode(), []],
 	])(
 		"Given %p returns %j",
@@ -1939,17 +1947,36 @@ describe("BinarySmlEncoder.encodeNode + encodeNodes", () => {
 test("BinarySmlEncoder.encode", () => {
 	const document = SmlDocument.parse("A\nEnd")
 	const bytes = BinarySmlEncoder.encode(document)
-	expect(bytes).toEqual(new Uint8Array([0x42, 0x53, 0x4D, 0x4C, 0x31, 0b00001001, 0x41]))
+	expect(bytes).toEqual(new Uint8Array([0x42, 0x53, 0x31, aByte, elementStartByte]))
+})
+
+test("BinarySmlEncoder.internalEncodeNode", () => {
+	const element = SmlElement.parse("E\nEnd")
+	const attribute = SmlAttribute.parse("A -")
+	const builder = new Uint8ArrayBuilder()
+	BinarySmlEncoder.internalEncodeNode(element, builder)
+	BinarySmlEncoder.internalEncodeNode(attribute, builder)
+	const bytes = builder.toArray()
+	expect(bytes).toEqual(new Uint8Array([eByte, elementStartByte, elementEndByte, aByte, valueSeparatorByte, nullValueByte, attributeEndByte]))
+})
+
+test("BinarySmlEncoder.internalEncodeNodes", () => {
+	const element = SmlElement.parse("E\nEnd")
+	const attribute = SmlAttribute.parse("A -")
+	const builder = new Uint8ArrayBuilder()
+	BinarySmlEncoder.internalEncodeNodes([element, attribute], builder)
+	const bytes = builder.toArray()
+	expect(bytes).toEqual(new Uint8Array([eByte, elementStartByte, elementEndByte, aByte, valueSeparatorByte, nullValueByte, attributeEndByte]))
 })
 
 // ----------------------------------------------------------------------
 
 describe("BinarySmlDecoder.getVersion", () => {
 	test.each([
-		[[0x42, 0x53, 0x4D, 0x4C, 0x31], "1"],
-		[[0x42, 0x53, 0x4D, 0x4C, 0x31], "1"],
-		[[0x42, 0x53, 0x4D, 0x4C, 0x32], "2"],
-		[[0x42, 0x53, 0x4D, 0x4C, 0x31, 0x00], "1"],
+		[[0x42, 0x53, 0x31], "1"],
+		[[0x42, 0x53, 0x31], "1"],
+		[[0x42, 0x53, 0x32], "2"],
+		[[0x42, 0x53, 0x31, 0x00], "1"],
 	])(
 		"Given %p returns %p",
 		(input, output) => {
@@ -1959,12 +1986,8 @@ describe("BinarySmlDecoder.getVersion", () => {
 	)
 
 	test.each([
-		[[0x43, 0x53, 0x4D, 0x4C, 0x31]],
-		[[0x42, 0x54, 0x4D, 0x4C, 0x31]],
-		[[0x42, 0x53, 0x4E, 0x4C, 0x31]],
-		[[0x42, 0x53, 0x4D, 0x4D, 0x31]],
-		[[0x42, 0x53, 0x4D, 0x4C]],
-		[[0x42, 0x53, 0x4D]],
+		[[0x43, 0x53, 0x31]],
+		[[0x42, 0x54, 0x31]],
 		[[0x42, 0x53]],
 		[[0x42]],
 		[[]],
@@ -1978,16 +2001,12 @@ describe("BinarySmlDecoder.getVersion", () => {
 
 describe("BinarySmlDecoder.getVersionOrNull", () => {
 	test.each([
-		[[0x42, 0x53, 0x4D, 0x4C, 0x31], "1"],
-		[[0x42, 0x53, 0x4D, 0x4C, 0x31], "1"],
-		[[0x42, 0x53, 0x4D, 0x4C, 0x32], "2"],
-		[[0x42, 0x53, 0x4D, 0x4C, 0x31, 0x00], "1"],
-		[[0x43, 0x53, 0x4D, 0x4C, 0x31], null],
-		[[0x42, 0x54, 0x4D, 0x4C, 0x31], null],
-		[[0x42, 0x53, 0x4E, 0x4C, 0x31], null],
-		[[0x42, 0x53, 0x4D, 0x4D, 0x31], null],
-		[[0x42, 0x53, 0x4D, 0x4C], null],
-		[[0x42, 0x53, 0x4D], null],
+		[[0x42, 0x53, 0x31], "1"],
+		[[0x42, 0x53, 0x31], "1"],
+		[[0x42, 0x53, 0x32], "2"],
+		[[0x42, 0x53, 0x31, 0x00], "1"],
+		[[0x43, 0x53, 0x31], null],
+		[[0x42, 0x54, 0x31], null],
 		[[0x42, 0x53], null],
 		[[0x42], null],
 		[[], null],
@@ -2002,31 +2021,118 @@ describe("BinarySmlDecoder.getVersionOrNull", () => {
 
 describe("BinarySmlDecoder.decode", () => {
 	test.each([
-		[[0b00001001, 0x41], "A\n-"],
-		[[emptyElementNameByte], `""\n-`],
-		[[0b00001001, 0x41, 0b00001001, 0x42, elementEndByte], "A\nB\n-\n-"],
-		[[0b00001001, 0x41, emptyAttributeNameByte, nullValueByte, attributeEndByte], `A\n"" -\n-`],
+		[[eByte, elementStartByte], "E\n-"],
+		[[elementStartByte], `""\n-`],
+		[[aByte, elementStartByte, 0x42, elementStartByte, elementEndByte], "A\nB\n-\n-"],
+		[[aByte, elementStartByte, valueSeparatorByte, nullValueByte, attributeEndByte], `A\n"" -\n-`],
 	])(
 		"Given %p returns %p",
 		(input, output) => {
-			const document = BinarySmlDecoder.decode(new Uint8Array([0x42, 0x53, 0x4D, 0x4C, 0x31, ...input]))
+			const document = BinarySmlDecoder.decode(new Uint8Array([0x42, 0x53, 0x31, ...input]))
 			expect(document.toMinifiedString()).toEqual(output)
 		}
 	)
 
 	test.each([
-		[[0b00001011, 0x41]],
-		[[0b00001001, 0x41, elementEndByte]],
-		[[0b00001001, 0x41, 0b00001001, 0x42]],
-		[[0b00001001, 0x41, emptyAttributeNameByte, nullValueByte]],
+		[[eByte]],
+		[[eByte, 0b11111000, elementStartByte]],
+		[[eByte, elementStartByte, aByte]],
+		[[eByte, elementStartByte, aByte, valueSeparatorByte]],
+		[[eByte, elementStartByte, aByte, valueSeparatorByte, 0x31]],
+		[[eByte, elementStartByte, aByte, valueSeparatorByte, nullValueByte]],
+		[[eByte, elementStartByte, aByte, valueSeparatorByte, nullValueByte, aByte]],
+		[[eByte, elementStartByte, elementEndByte]],
+		[[]],
 	])(
 		"Given %p throws",
 		(input) => {
-			expect(() => BinarySmlDecoder.decode(new Uint8Array([0x42, 0x53, 0x4D, 0x4C, 0x31, ...input]))).toThrowError()
+			expect(() => BinarySmlDecoder.decode(new Uint8Array([0x42, 0x53, 0x31, ...input]))).toThrowError()
 		}
 	)
 
 	test("BinarySmlDecoder.decode throws", () => {
-		expect(() => BinarySmlDecoder.decode(new Uint8Array([0x42, 0x53, 0x4D, 0x4C, 0x32]))).toThrowError()
+		expect(() => BinarySmlDecoder.decode(new Uint8Array([0x42, 0x53, 0x32]))).toThrowError()
 	})
+})
+
+describe("BinarySmlDecoder.internalDecodeNode", () => {
+	test("internalDecodeNode", () => {
+		let reader = new Uint8ArrayReader(new Uint8Array([]), 0)
+		let result = BinarySmlDecoder.internalDecodeNode(reader)
+		expect(result).toEqual(null)
+
+		reader = new Uint8ArrayReader(new Uint8Array([aByte, valueSeparatorByte, nullValueByte, attributeEndByte]), 0)
+		result = BinarySmlDecoder.internalDecodeNode(reader)
+		expect(result?.toString()).toEqual(`A -`)
+	})
+
+	test.each([
+		[[eByte, elementStartByte]],
+		[[aByte, valueSeparatorByte, nullValueByte, attributeEndByte, eByte]],
+		[[elementEndByte]],
+	])(
+		"Given %p throws",
+		(input) => {
+			const reader = new Uint8ArrayReader(new Uint8Array(input), 0)
+			expect(() => BinarySmlDecoder.internalDecodeNode(reader)).toThrowError()
+		}
+	)
+})
+
+describe("BinarySmlDecoder.internalGetNodeEndIndex", () => {
+	test.each([
+		[[eByte, elementStartByte, elementEndByte], 0, 2],
+		[[eByte, elementStartByte, elementEndByte, eByte, elementStartByte, elementEndByte], 0, 2],
+		[[eByte, elementStartByte, elementEndByte, eByte, elementStartByte, elementEndByte], 3, 5],
+		[[aByte, valueSeparatorByte, 0x31, attributeEndByte], 0, 3],
+		[[aByte, valueSeparatorByte, 0x31, attributeEndByte, eByte, elementStartByte, elementEndByte], 0, 3],
+		[[aByte, valueSeparatorByte, 0x31, attributeEndByte, aByte, valueSeparatorByte, 0x31, attributeEndByte], 4, 7],
+	])(
+		"Given %p and %p returns %p",
+		(input1, input2, output) => {
+			const index = BinarySmlDecoder.internalGetNodeEndIndex(new Uint8Array(input1), input2)
+			expect(index).toEqual(output)
+		}
+	)
+
+	test.each([
+		[[elementEndByte], 0],
+	])(
+		"Given %p throws",
+		(input1, input2) => {
+			expect(() => BinarySmlDecoder.internalGetNodeEndIndex(new Uint8Array(input1), input2)).toThrowError()
+		}
+	)
+})
+
+// ----------------------------------------------------------------------
+
+describe("Uint8ArrayReader.readRootElementStart", () => {
+	test("readRootElementStart", () => {
+		const reader = new Uint8ArrayReader(new Uint8Array([aByte, elementStartByte]), 0)
+		const result = reader.readRootElementStart()
+		expect(result).toEqual("A")
+	})
+
+	test("throws", () => {
+		const reader = new Uint8ArrayReader(new Uint8Array([aByte]), 0)
+		expect(() =>reader.readRootElementStart()).toThrowError()
+	})
+})
+
+test("Uint8ArrayReader.reset", () => {
+	const originalBuffer = new Uint8Array([aByte, elementStartByte])
+	const reader = new Uint8ArrayReader(originalBuffer, 0)
+	expect(reader.buffer).toEqual(originalBuffer)
+	expect(reader.offset).toEqual(0)
+
+	const newBuffer = new Uint8Array([eByte, elementStartByte])
+	reader.reset(newBuffer, 1)
+	expect(reader.buffer).toEqual(newBuffer)
+	expect(reader.offset).toEqual(1)
+})
+
+test("Uint8ArrayReader.read throws", () => {
+	const reader = new Uint8ArrayReader(new Uint8Array([aByte, valueSeparatorByte, nullValueByte, attributeEndByte]), 0)
+	expect(() =>reader.read(true)).toThrowError()
 })

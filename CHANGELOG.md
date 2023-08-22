@@ -1,5 +1,9 @@
 ﻿# Changelog
 
+## 0.8.0
+- renamed SmlDocument.getBytes to toBytes
+- BinarySML switch
+
 ## 0.7.0
 - optimizations
 - added BinarySML support

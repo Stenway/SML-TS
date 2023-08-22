@@ -337,10 +337,7 @@ console.log(
 
 ## BinarySML
 
-BinarySML is the binary representation of SML documents. It starts with the magic code 'BSML'.
-It uses the VarInt56 encoding to encode for example how many bytes a string value will take up space.
-Because it uses VarInt56, the complete file is UTF-8 compatible and can be validated for UTF-8 correctness in one single step which can offer a performance advantage.
-
+BinarySML is the binary representation of SML documents. It starts with the magic code 'BS1'.
 BinarySML is made for scenarios, where parsing speed of the textual representation might be a limitation.
 
 Usage:

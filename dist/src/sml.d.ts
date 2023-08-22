@@ -17,6 +17,7 @@ export declare abstract class SmlNode {
     isAttributeWithName(name: string): boolean;
     abstract internalSerialize(lines: string[], level: number, defaultIndentation: string | null, endKeyword: string | null, preserveWhitespaceAndComment: boolean): void;
     minify(): void;
+    abstract toString(): string;
     static internalSetWhitespacesAndComment(node: SmlNode, whitespaces: (string | null)[] | null, comment: string | null): void;
 }
 export declare class SmlEmptyNode extends SmlNode {
@@ -158,7 +159,8 @@ export declare class SmlDocument {
     minify(): void;
     toString(preserveWhitespaceAndComment?: boolean): string;
     toMinifiedString(): string;
-    getBytes(preserveWhitespacesAndComments?: boolean): Uint8Array;
+    toBytes(preserveWhitespacesAndComments?: boolean): Uint8Array;
+    toMinifiedBytes(): Uint8Array;
     toBase64String(preserveWhitespacesAndComments?: boolean): string;
     toJaggedArray(minified?: boolean): (string | null)[][];
     toBinarySml(): Uint8Array;
@@ -267,18 +269,19 @@ export declare abstract class SmlParser {
 }
 export declare abstract class BinarySmlUtil {
     static getPreambleVersion1(): Uint8Array;
-    static readonly elementEndByte = 1;
-    static readonly emptyElementNameByte = 5;
-    static readonly emptyAttributeNameByte = 3;
-    static readonly attributeEndByte = 1;
-    static readonly nullValueByte = 3;
+    static readonly elementStartByte = 255;
+    static readonly elementEndByte = 254;
+    static readonly attributeEndByte = 253;
+    static readonly valueSeparatorByte = 252;
+    static readonly nullValueByte = 251;
 }
 export declare abstract class BinarySmlEncoder {
-    private static _encodeAttribute;
-    private static _encodeElement;
+    static internalEncodeElement(element: SmlElement, builder: Uint8ArrayBuilder, isRootElement: boolean): void;
     static encodeElement(element: SmlElement, isRootElement?: boolean): Uint8Array;
     static encodeAttribute(attribute: SmlAttribute): Uint8Array;
+    static internalEncodeNode(node: SmlNode, builder: Uint8ArrayBuilder): void;
     static encodeNode(node: SmlNode): Uint8Array;
+    static internalEncodeNodes(nodes: SmlNode[], builder: Uint8ArrayBuilder): void;
     static encodeNodes(nodes: SmlNode[]): Uint8Array;
     static encode(document: SmlDocument): Uint8Array;
 }
@@ -288,11 +291,25 @@ export declare class NoBinarySmlPreambleError extends Error {
 export declare class InvalidBinarySmlError extends Error {
     constructor();
 }
+export declare class Uint8ArrayReader {
+    buffer: Uint8Array;
+    offset: number;
+    private utf8Decoder;
+    constructor(buffer: Uint8Array, offset: number);
+    reset(buffer: Uint8Array, offset: number): void;
+    get hasBytes(): boolean;
+    private readString;
+    private readNonEmptyStringValue;
+    private readAttribute;
+    private readElement;
+    read(isRootElement: boolean): SmlElement | SmlAttribute | null | undefined;
+    readRootElementStart(): string;
+}
 export declare abstract class BinarySmlDecoder {
     static getVersion(bytes: Uint8Array): string;
     static getVersionOrNull(bytes: Uint8Array): string | null;
-    private static _decodeAttribute;
-    private static _decodeElement;
+    static internalGetNodeEndIndex(bytes: Uint8Array, startIndex: number): number;
+    static internalDecodeNode(reader: Uint8ArrayReader): SmlNode | null;
     static decode(bytes: Uint8Array): SmlDocument;
 }
 //# sourceMappingURL=sml.d.ts.map
