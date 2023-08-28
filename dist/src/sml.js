@@ -1237,7 +1237,7 @@ export class SyncWsvJaggedArrayLineIterator {
     }
 }
 // ----------------------------------------------------------------------
-export class SmlParser {
+class SmlParser {
     static parseAttributeSync(content, preserveWhitespacesAndComments) {
         const line = WsvLine.parse(content, preserveWhitespacesAndComments);
         if (line.values.length < 2) {
@@ -1551,8 +1551,9 @@ SmlParser.invalidRootElementStart = "Invalid root element start";
 SmlParser.nullValueAsElementNameIsNotAllowed = "Null value as element name is not allowed";
 SmlParser.nullValueAsAttributeNameIsNotAllowed = "Null value as attribute name is not allowed";
 SmlParser.endKeywordCouldNotBeDetected = "End keyword could not be detected";
+export { SmlParser };
 // ----------------------------------------------------------------------
-export class BinarySmlUtil {
+class BinarySmlUtil {
     static getPreambleVersion1() {
         return new Uint8Array([0x42, 0x53, 0x31]);
     }
@@ -1562,6 +1563,7 @@ BinarySmlUtil.elementEndByte = 0b11111110;
 BinarySmlUtil.attributeEndByte = 0b11111101;
 BinarySmlUtil.valueSeparatorByte = 0b11111100;
 BinarySmlUtil.nullValueByte = 0b11111011;
+export { BinarySmlUtil };
 // ----------------------------------------------------------------------
 export class BinarySmlEncoder {
     static internalEncodeElement(element, builder, isRootElement) {

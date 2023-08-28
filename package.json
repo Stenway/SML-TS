@@ -1,6 +1,6 @@
 {
   "name": "@stenway/sml",
-  "version": "0.8.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "Serialize and deserialze SML documents",
   "homepage": "https://www.simpleml.com",
@@ -45,7 +45,7 @@
     "typescript": "^5.0.4"
   },
   "dependencies": {
-    "@stenway/reliabletxt": "^0.8.0",
-    "@stenway/wsv": "^0.8.0"
+    "@stenway/reliabletxt": "^1.0.0",
+    "@stenway/wsv": "^1.0.0"
   }
 }
