@@ -117,7 +117,7 @@ export class SmlValueUtil {
         return enumValues[value];
     }
     static getBytesString(bytes) {
-        return Base64String.fromBytes(bytes);
+        return Base64String.encodeBytes(bytes);
     }
     static getBoolOrNull(str) {
         str = str.toLowerCase();
@@ -158,7 +158,7 @@ export class SmlValueUtil {
     }
     static getBytesOrNull(str) {
         try {
-            return Base64String.toBytes(str);
+            return Base64String.decodeAsBytes(str);
         }
         catch (error) {
             return null;
@@ -1037,7 +1037,7 @@ export class SmlDocument {
     }
     toBase64String(preserveWhitespacesAndComments = true) {
         const str = this.toString(preserveWhitespacesAndComments);
-        return Base64String.fromText(str, this.encoding);
+        return Base64String.encodeText(str, this.encoding);
     }
     toJaggedArray(minified = false) {
         const endKeyword = minified ? null : this.endKeyword;
@@ -1062,7 +1062,7 @@ export class SmlDocument {
         return SmlParser.parseJaggedArraySync(jaggedArray, encoding);
     }
     static fromBase64String(base64Str) {
-        const bytes = Base64String.toBytes(base64Str);
+        const bytes = Base64String.decodeAsBytes(base64Str);
         return this.fromBytes(bytes);
     }
     static fromBinarySml(bytes) {

@@ -135,7 +135,7 @@ export abstract class SmlValueUtil {
 	}
 
 	static getBytesString(bytes: Uint8Array): string {
-		return Base64String.fromBytes(bytes)
+		return Base64String.encodeBytes(bytes)
 	}
 	
 	static getBoolOrNull(str: string): boolean | null {
@@ -167,7 +167,7 @@ export abstract class SmlValueUtil {
 
 	static getBytesOrNull(str: string): Uint8Array | null {
 		try {
-			return Base64String.toBytes(str)
+			return Base64String.decodeAsBytes(str)
 		} catch (error) {
 			return null
 		}
@@ -1004,7 +1004,7 @@ export class SmlDocument {
 
 	toBase64String(preserveWhitespacesAndComments: boolean = true): string {
 		const str: string = this.toString(preserveWhitespacesAndComments)
-		return Base64String.fromText(str, this.encoding)
+		return Base64String.encodeText(str, this.encoding)
 	}
 
 	toJaggedArray(minified: boolean = false): (string | null)[][] {
@@ -1031,7 +1031,7 @@ export class SmlDocument {
 	}
 
 	static fromBase64String(base64Str: string): SmlDocument {
-		const bytes = Base64String.toBytes(base64Str)
+		const bytes = Base64String.decodeAsBytes(base64Str)
 		return this.fromBytes(bytes)
 	}
 
